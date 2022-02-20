@@ -33,7 +33,18 @@ class Client:
 
             # Sends messge
             tcp.sendall(msg)
+            msg = tcp.recv(1024)
+            if not msg:
+                print('Nothing recieved')
+                tcp.close()
+                return
 
+            msg = msg.decode('utf-8')
+            msg = json.loads(msg)
+
+            # Print received data
+            print('Msg recieved: ', msg)
+            
     def start_server(self):
 
         print('creating socket')
@@ -53,10 +64,10 @@ class Client:
                     with conn:
                         print('Connected by', address)
 
-                        # Recebe os dados do cliente
+                        # Receive customer data
                         msg = conn.recv(1024)
 
-                        # Se der algo errado com os dados, sai do loop
+                        # If something goes wrong with the data, exit the loop
                         if not msg:
                             print('Nothing recieved')
                             conn.close()
@@ -65,7 +76,7 @@ class Client:
                         msg = msg.decode('utf-8')
                         msg = json.loads(msg)
 
-                        # Imprime os dados recebidos
+                        # Print received data
                         print('Msg recieved: ', msg)
 
                 except Exception:

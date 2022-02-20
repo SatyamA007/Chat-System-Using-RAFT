@@ -34,7 +34,7 @@ class ServerNode:
         # Persistent state on all servers
         self._current_term = 0   # Latest term server has seen
         self._voted_for = None   # Candidate id that received vote in current term
-        self._log = ''         # log entries; each entry contains command for state machine, and term when entry was received by leader
+        self._log = ''           # log entries; each entry contains command for state machine, and term when entry was received by leader
 
         # Volatile state on all servers
         self._commit_index = 0   # Index of highest log entry known to be committed
@@ -181,7 +181,7 @@ class ServerNode:
         for node, value in self.nodos.items():
             if value['name'] != self._name:
                 try:
-                    print(f'Leader trying do append entry for {node}: {value["name"]}')
+                    print(f'Leader trying to append entry for {node}: {value["name"]}')
                     msg = {
                         'type': 'apn_en',
                         'term': self._current_term,
@@ -217,7 +217,7 @@ class ServerNode:
 
                             if ack_change == self._log:
                                 self._ack_log += 1
-
+                                #if heard back from majority
                                 if self._ack_log > 2:
                                     self.commit()
                                     self.send_commit()
@@ -349,7 +349,13 @@ class ServerNode:
 
                 # If a follower receives a message from a client the it must redirect to the leader
                 else:
-                    conn.sendall(('Not leader').encode('utf-8'))
+                    next_node_port = (self.PORT - 5000)%(len(self.nodos)) + 5001
+                    conn.sendall((json.dumps({'Not a leader': 'redirecting to port ' + str(next_node_port) })).encode('utf-8'))
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
+                        # Connects to server destination
+                        tcp.connect(('', next_node_port))
+                        # Send message
+                        tcp.sendall(json.dumps(msg).encode('utf-8'))
 
             # If it is an append entry message from the leader
             elif msg['type'] == 'apn_en':
