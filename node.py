@@ -4,6 +4,7 @@ import socket
 import signal
 import sys
 import json
+from urllib import request
 import my_exceptions
 
 
@@ -78,27 +79,52 @@ class ServerNode:
         raise my_exceptions.HeartbeatException('Hearbeat')
 
     # Remote procedure call
-    def request_vote(self, node_port):
+    def request_vote(self, node, value):
 
         msg = {
+            'type': 'req_vote',
             'term': self._current_term,
             'candidate_id': self._name,
             'last_log_index': self._last_applied,
             'last_log_term': self._commit_index
         }
+        msg = json.dumps(msg)
 
-        reply = self.send_msg(msg, node_port)
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
 
-        # Prints the received data
-        print('Received: ', repr(reply))
+                tcp.settimeout(0.5)
 
-        if reply['canidate_id'] == self.__name:
-            self._votes_in_term += 1
-            print('Votes in term')
+                # Connects to server destination
+                tcp.connect(('', value["port"]))
 
-        # Once a candidate has a majority of votes it becomes leader.
-        if self._votes_in_term > 2:
-            self.state = 'Leader'
+                print(f'Requesting vote to node {node}: {value["name"]}')
+
+                # Send message
+                tcp.sendall(msg.encode('utf-8'))
+
+                # Receives data from the server
+                reply = tcp.recv(1024).decode('utf-8')
+
+                if not reply:
+                    print("Reply not recieved")
+                    return reply
+
+                reply = json.loads(reply)
+                return reply
+
+        except TimeoutError as te:
+            print(te.args[0])
+            tcp.close()
+
+        except Exception as e:
+            tcp.close()
+            print(e)
+
+        except KeyboardInterrupt:
+            raise SystemExit()
+        tcp.close()
+        return {'candidate_id':'error'}
 
     def reply_vote(self, msg):
         """
@@ -246,62 +272,22 @@ class ServerNode:
             time.sleep(0.1)
             if value['name'] != self._name:
                 print(f'Trying to connect {node}: {value["name"]}')
-                msg = {
-                    'type': 'req_vote',
-                    'term': self._current_term,
-                    'candidate_id': self._name,
-                    'last_log_index': self._last_applied,
-                    'last_log_term': self._commit_index
-                }
-                msg = json.dumps(msg)
+                reply = self.request_vote(node, value)
+                
+                if not reply:
+                    break
 
-                try:
-                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
+                for key, value in reply.items():
 
-                        tcp.settimeout(0.5)
+                    if value == self._name:
+                        self._votes_in_term += 1
+                        print('Votes in term', self._votes_in_term)
 
-                        # Connects to server destination
-                        tcp.connect(('', value['port']))
-
-                        print(f'Requesting vote to node {node}: {value["name"]}')
-
-                        # Send message
-                        tcp.sendall(msg.encode('utf-8'))
-
-                        # Receives data from the server
-                        reply = tcp.recv(1024).decode('utf-8')
-
-                        if not reply:
-                            print("Reply not recieved")
-                            break
-
-                        reply = json.loads(reply)
-
-                        for key, value in reply.items():
-
-                            if value == self._name:
-                                self._votes_in_term += 1
-                                print('Votes in term', self._votes_in_term)
-
-                            # Once a candidate has a majority of votes it becomes leader.
-                            if self._votes_in_term > 2:
-                                self._state = 'Leader'
-                                print(f'Node {self._name} becomes {self._state}')
-                                self.append_entries()
-
-                except TimeoutError as te:
-                    print(te.args[0])
-                    tcp.close()
-                    continue
-
-                except Exception as e:
-                    tcp.close()
-                    print(e)
-                    continue
-
-                except KeyboardInterrupt:
-                    raise SystemExit()
-        tcp.close()
+                    # Once a candidate has a majority of votes it becomes leader.
+                    if self._votes_in_term > 2:
+                        self._state = 'Leader'
+                        print(f'Node {self._name} becomes {self._state}')
+                        self.append_entries()
 
     def conn_loop(self, conn, address):
         with conn:
@@ -359,46 +345,14 @@ class ServerNode:
 
             # If it is an append entry message from the leader
             elif msg['type'] == 'apn_en':
-                self._election_timeout = self.get_election_timeout()
-                self.config_timeout()
-                self._state = "Follower"
-                self._log = (msg['change'])
-
-                ack_msg = {
-                    'client_id': self._name,
-                    'term': self._current_term,
-                    'type': 'ack_append_entry',
-                    'change': self._log
-                }
-
-                reply = json.dumps(ack_msg)
-                conn.sendall(reply.encode('utf-8'))
+                self.reply_append_entry(msg, conn)                
 
             elif msg['type'] == 'commit':
                 self.commit()
                 self._log = ''
 
-            elif msg['type'] == 'req_vote':
-
-                if msg['term'] > self._current_term:
-
-                    self._state = "Follower"  # Becomes follower again if term is outdated
-                    print('Follower')
-
-                    self._current_term = msg['term']
-                    self._voted_for = msg['candidate_id']
-                    reply_vote = {
-                        'candidate_id': msg['candidate_id']
-                    }
-                    self._election_timeout = self.get_election_timeout()  # ...and the node resets its election timeout.
-                    self.config_timeout()
-
-                else:
-                    reply_vote = {
-                    'candidate_id': self._voted_for
-                    }
-
-                reply_msg = json.dumps(reply_vote)
+            elif msg['type'] == 'req_vote':               
+                reply_msg = self.reply_vote(msg)
                 print(f'Replying to {msg["candidate_id"]}')
                 conn.sendall(reply_msg.encode('utf-8'))
 
@@ -430,19 +384,27 @@ class ServerNode:
                     print('Appending entries')
                     self.append_entries()
 
-    def reply_append_entry(self, append_entry_msg):
+    def reply_append_entry(self, msg, conn):
         """
         An entry is committed once a majority of followers acknowledge it...
         :param append_entry_msg:
         :return:
         """
         # TODO: Acknowledge message
+        self._election_timeout = self.get_election_timeout()
+        self.config_timeout()
+        self._state = "Follower"
+        self._log = (msg['change'])
+
         ack_msg = {
             'client_id': self._name,
             'term': self._current_term,
-            'type': 'ack_append_entry'
+            'type': 'ack_append_entry',
+            'change': self._log
         }
-        self.send_msg(ack_msg, append_entry_msg['port'])
+
+        reply = json.dumps(ack_msg)
+        conn.sendall(reply.encode('utf-8'))
 
     def get_election_timeout(self):
         """
