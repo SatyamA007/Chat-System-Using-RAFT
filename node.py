@@ -124,11 +124,7 @@ class ServerNode:
                     }
                     msg = json.dumps(msg)
 
-                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
-                        # Connects to server destination
-                        tcp.connect(('', value['port']))
-                        # Send message
-                        tcp.sendall(msg.encode('utf-8'))
+                    send_message(msg, value['port'])
 
                 except Exception as e:
                     print(e)

@@ -109,3 +109,10 @@ def request_vote(self, node, value):
         raise SystemExit()
     tcp.close()
     return {'candidate_id':'error'}
+
+def send_message(msg, port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
+        # Connects to server destination
+        tcp.connect(('', port))
+        # Send message
+        tcp.sendall(msg.encode('utf-8'))
