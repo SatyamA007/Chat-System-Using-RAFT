@@ -1,14 +1,7 @@
 from utils import *
+from settings import *
 
 class ServerNode:
-
-    state = ['Follower', 'Candidate', 'Leader']
-
-    nodos = {
-        'node1': {'name': 'a', 'port': 5001},
-        'node2': {'name': 'b', 'port': 5002},
-        'node3': {'name': 'c', 'port': 5003},
-    }
 
     def __init__(self, node_id, node_port):
 
@@ -184,7 +177,7 @@ class ServerNode:
                             if ack_change == self._log:
                                 self._ack_log += 1
                                 #if heard back from majority
-                                if self._ack_log > 2:
+                                if self._ack_log > len(nodos)/2:
                                     self.commit()
                                     self.send_commit()
                                     self._ack_log = 0
@@ -224,7 +217,7 @@ class ServerNode:
                         print('Votes in term', self._votes_in_term)
 
                     # Once a candidate has a majority of votes it becomes leader.
-                    if self._votes_in_term > 2:
+                    if self._votes_in_term > len(nodos)/2:
                         self._state = 'Leader'
                         print(f'Node {self._name} becomes {self._state}')
                         self.append_entries()
@@ -316,7 +309,10 @@ class ServerNode:
 
 if __name__ == "__main__":
 
-    name = sys.argv[1]
-    port = sys.argv[2]
+    if len(sys.argv)>1:
+        name = str(sys.argv[1])
 
-    server_node = ServerNode(name, port)
+    while name not in nodos.keys():
+        name = input("Provide server name (1-5): ")
+
+    server_node = ServerNode(name, nodos[name]['port'])
