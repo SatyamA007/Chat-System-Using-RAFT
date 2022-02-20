@@ -27,9 +27,9 @@ class ServerNode:
         self._address = None
 
         # The election timeout is the amount of time a follower waits until becoming a candidate.
-        self._election_timeout = self.get_election_timeout() # Sets node election timeout
+        self._election_timeout = self.get_election_timeout()  # Sets node election timeout
         self._votes_in_term = 0      # Votes received by the candidate in a given election term
-        self._heartbeat_timeout = self.get_hearbeat_timeout() # Must be less then election timeout
+        self._heartbeat_timeout = self.get_hearbeat_timeout()  # Must be less then election timeout
 
         # Persistent state on all servers
         self._current_term = 0   # Latest term server has seen
@@ -41,7 +41,7 @@ class ServerNode:
         self._last_applied = 0   # Index of highest log entry applied to state machine
 
         # Volatile state on leaders, for each server
-        self._next_index = 0    # Index of the next log entry to send to that server, also known as last log index
+        self._next_index  = 0    # Index of the next log entry to send to that server, also known as last log index
         self._match_index = 0    # Index of highest log entry known to be replicated on server, also known as last log term
 
         self._to_commit = False
@@ -108,15 +108,15 @@ class ServerNode:
         """
         if msg['term'] > self._current_term:
 
-            self._state = "Follower" # Becomes follower again if term is outdated
+            self._state = "Follower"  # Becomes follower again if term is outdated
             print('Follower')
 
             self._current_term = msg['term']
             self._voted_for = msg['candidate_id']
             reply_vote = {
-            'candidate_id': msg['candidate_id']
+                'candidate_id': msg['candidate_id']
             }
-            self._election_timeout = self.get_election_timeout() # ...and the node resets its election timeout.
+            self._election_timeout = self.get_election_timeout()  # ...and the node resets its election timeout.
             self.config_timeout()
             return json.dumps(reply_vote)
 
@@ -351,7 +351,7 @@ class ServerNode:
                 else:
                     conn.sendall(('Not leader').encode('utf-8'))
 
-                # If it is an append entry message from the leader
+            # If it is an append entry message from the leader
             elif msg['type'] == 'apn_en':
                 self._election_timeout = self.get_election_timeout()
                 self.config_timeout()
@@ -376,7 +376,7 @@ class ServerNode:
 
                 if msg['term'] > self._current_term:
 
-                    self._state = "Follower" # Becomes follower again if term is outdated
+                    self._state = "Follower"  # Becomes follower again if term is outdated
                     print('Follower')
 
                     self._current_term = msg['term']
@@ -387,14 +387,14 @@ class ServerNode:
                     self._election_timeout = self.get_election_timeout()  # ...and the node resets its election timeout.
                     self.config_timeout()
 
-            else:
-                reply_vote = {
-                'candidate_id': self._voted_for
-                }
+                else:
+                    reply_vote = {
+                    'candidate_id': self._voted_for
+                    }
 
-            reply_msg = json.dumps(reply_vote)
-            print(f'Replying to {msg["candidate_id"]}')
-            conn.sendall(reply_msg.encode('utf-8'))
+                reply_msg = json.dumps(reply_vote)
+                print(f'Replying to {msg["candidate_id"]}')
+                conn.sendall(reply_msg.encode('utf-8'))
 
     def receive_msg(self):
 
@@ -402,7 +402,7 @@ class ServerNode:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
 
             # Join socket to host and port
-            tcp.bind('', self.PORT) # Receives messages from any host
+            tcp.bind(('', self.PORT)) # Receives messages from any host
 
             # Enables the server to accept 5 connections
             tcp.listen(5)
@@ -450,7 +450,7 @@ class ServerNode:
 
     def get_hearbeat_timeout(self):
         """
-        Set a hearbeat timeout for leader node
+         Set a hearbeat  timeout for leader node
         :return: timeout of two seconds
         """
         return 2

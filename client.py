@@ -16,7 +16,7 @@ class Client:
         # Create a tcp socket
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
 
-            port = int(input("A porta do lider:"))
+            port = int(input("Leader's port:"))
 
             # Receive message to be sent
             msg_value = input("Enter the message to be sent:")
