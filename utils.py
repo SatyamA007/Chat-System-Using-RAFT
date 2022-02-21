@@ -5,11 +5,12 @@ import signal
 import sys
 import json
 import my_exceptions
+import pickle
 
 from settings import *
 
-def client_receive_message(self, msg, conn):
-    print('Recieved msg from client')
+def interface_receive_message(self, msg, conn):
+    print('Recieved msg from interface')
 
     # Only the leader handles it
     if self._state == 'Leader':  # This process is called Log Replication
@@ -34,12 +35,15 @@ def client_receive_message(self, msg, conn):
 
 def redirect_to_leader(self, msg, conn):
     next_node_port = (self.PORT - 5000)%(len(nodos)) + 5001
-    conn.sendall((json.dumps({'Not a leader': 'redirecting to port ' + str(next_node_port) })).encode('utf-8'))
+    conn.sendall(pickle.dumps({'Not a leader': 'redirecting to port ' + str(next_node_port) }))
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
-        # Connects to server destination
-        tcp.connect(('', next_node_port))
-        # Send message
-        tcp.sendall(json.dumps(msg).encode('utf-8'))
+        try:
+            # Connects to server destination
+            tcp.connect(('', next_node_port))
+            # Send message
+            tcp.sendall(pickle.dumps(msg))
+        except Exception as e:
+                    print(e)
 
 def reply_append_entry(self, msg, conn):
     """
@@ -60,8 +64,8 @@ def reply_append_entry(self, msg, conn):
         'change': self._log
     }
 
-    reply = json.dumps(ack_msg)
-    conn.sendall(reply.encode('utf-8'))
+    reply = pickle.dumps(ack_msg)
+    conn.sendall(reply)
 # Remote procedure call
 def request_vote(self, node, value):
 
@@ -72,7 +76,7 @@ def request_vote(self, node, value):
         'last_log_index': self._last_applied,
         'last_log_term': self._commit_index
     }
-    msg = json.dumps(msg)
+    msg = pickle.dumps(msg)
 
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
@@ -85,16 +89,16 @@ def request_vote(self, node, value):
             print(f'Requesting vote to node {node}: {value["name"]}')
 
             # Send message
-            tcp.sendall(msg.encode('utf-8'))
+            tcp.sendall(msg)
 
             # Receives data from the server
-            reply = tcp.recv(1024).decode('utf-8')
+            reply = tcp.recv(4098)
 
             if not reply:
                 print("Reply not recieved")
                 return reply
 
-            reply = json.loads(reply)
+            reply = pickle.loads(reply)
             return reply
 
     except TimeoutError as te:
@@ -115,4 +119,4 @@ def send_message(msg, port):
         # Connects to server destination
         tcp.connect(('', port))
         # Send message
-        tcp.sendall(msg.encode('utf-8'))
+        tcp.sendall(msg)

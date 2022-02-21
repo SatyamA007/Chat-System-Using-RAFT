@@ -1,4 +1,5 @@
 import json
+import pickle
 import signal
 import socket
 
@@ -36,7 +37,7 @@ class Client:
 
             # Sends messge
             tcp.sendall(msg)
-            msg = tcp.recv(1024)
+            msg = tcp.recv(4098)
             if not msg:
                 print('Nothing recieved')
                 tcp.close()
@@ -68,7 +69,7 @@ class Client:
                         print('Connected by', address)
 
                         # Receive customer data
-                        msg = conn.recv(1024)
+                        msg = conn.recv(4098)
 
                         # If something goes wrong with the data, exit the loop
                         if not msg:
@@ -96,28 +97,30 @@ class Client:
                 print("Wrong Input!! Try agian...")
                 continue
             else:
-                self.send_change()
                 break
 
     def check_invalid_command(self, client:str):
-        command = input('''Please issue a command from the following: \n1. createGroup <group id>\n2. add <group id> <client id>\n3. kick <group id> <client id>\n4. writeMessage <group id> <message>\n5. printGroup <group id>\n6. failLink <src> <dest>\n''')
+        command = input('''Please issue a command from the following: \n1. createGroup <group id> <candidate_id>(s)\n2. add <group id> <client id>\n3. kick <group id> <client id>\n4. writeMessage <group id> <message>\n5. printGroup <group id>\n6. failLink <src> <dest>\n''')
         command = command.strip().split(' ')
         command[0] = command[0].lower()
 
-        if command[0] =="creategroup" and len(command)==2:
-            msg = {'type': 'create_group', 'g_id': command[1]}   
+        if command[0] =="creategroup" and (len(command)==2 or len(command)>2 and set(command[2:]).issubset(set(nodos.keys())) ):
+            client_ids = [client] 
+            if len(command)>2: 
+                client_ids.extend(command[2:])
+            msg = {'type': 'create_group', 'group_id': command[1], 'client_ids':list(set(client_ids))}   
             
         elif command[0] =="add" and len(command)==3 and command[2] in nodos.keys():
-            msg = { 'type': 'add2group', 'g_id': command[1], 'node': command[2] }
+            msg = { 'type': 'add2group', 'group_id': command[1], 'node': command[2] }
 
         elif command[0] =="kick" and len(command)==3 and command[2] in nodos.keys():
-            msg = { 'type': 'kick', 'g_id': command[1], 'node': command[2] }
+            msg = { 'type': 'kick', 'group_id': command[1], 'node': command[2] }
             
         elif command[0] =="writemessage"and len(command)==3:
-            msg = { 'type': 'write_message', 'g_id': command[1], 'message': command[2] }
+            msg = { 'type': 'write_message', 'group_id': command[1], 'message': command[2] }
             
         elif command[0] =="printgroup" and len(command)==2:
-            msg = { 'type': 'print_group', 'g_id': command[1] }
+            msg = { 'type': 'print_group', 'group_id': command[1] }
             
         elif command[0] =="faillink" and len(command)==3 and command[1] in nodos.keys() and command[2] in nodos.keys():
             msg = { 'type': 'fail_link', 'node1': command[1], 'node2': command[2] }
@@ -125,9 +128,9 @@ class Client:
         else:
             return True
 
-        msg = json.dumps(msg)
+        msg = pickle.dumps(msg)
         send_message(msg, nodos[client]['port'])
         return False  
 
 if __name__== "__main__":
-    client = Client(client['port'])
+    interface = Client(interface['port'])

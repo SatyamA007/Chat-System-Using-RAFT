@@ -1,3 +1,6 @@
+import rsa
+import pickle
+
 from utils import *
 from settings import *
 
@@ -81,13 +84,13 @@ class ServerNode:
             }
             self._election_timeout = self.get_election_timeout()  # ...and the node resets its election timeout.
             self.config_timeout()
-            return json.dumps(reply_vote)
+            return pickle.dumps(reply_vote)
 
         else:
             reply_vote = {
                 'candidate_id': self._voted_for
             }
-            return json.dumps(reply_vote)
+            return pickle.dumps(reply_vote)
 
     def vote_in_candidate(self, candidate):
         pass
@@ -115,7 +118,7 @@ class ServerNode:
                         'leader_commit': self._to_commit,
                         'change': commit_msg
                     }
-                    msg = json.dumps(msg)
+                    msg = pickle.dumps(msg)
 
                     send_message(msg, value['port'])
 
@@ -151,7 +154,7 @@ class ServerNode:
                         'leader_commit': self._to_commit,
                         'change': self._log
                     }
-                    msg = json.dumps(msg)
+                    msg = pickle.dumps(msg)
 
                     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
 
@@ -161,11 +164,11 @@ class ServerNode:
                         print(f'Send app entry to node {node}: {value["name"]}')
 
                         # Send message
-                        tcp.sendall(msg.encode('utf-8'))
+                        tcp.sendall(msg)
 
                         # Receives data from the server
-                        reply = tcp.recv(1024).decode('utf-8')
-                        reply = json.loads(reply)
+                        reply = tcp.recv(4098)
+                        reply = pickle.loads(reply)
 
                         print('Append reply: ', reply)
 
@@ -227,7 +230,7 @@ class ServerNode:
             print('Connected by', address)
 
             # Receives customer data
-            msg = conn.recv(1024)
+            msg = conn.recv(4098)
 
             # If something goes wrong with the data, it gets out of the loop
             if not msg:
@@ -235,8 +238,7 @@ class ServerNode:
                 conn.close()
                 return
 
-            msg = msg.decode('utf-8')
-            msg = json.loads(msg)
+            msg = pickle.loads(msg)
 
             # Prints the received data
             print('Msg recieved: ', msg)
@@ -246,7 +248,7 @@ class ServerNode:
 
             # If it is a message sent from a client
             if msg['type'] == 'client':
-                client_receive_message(self, msg, conn)
+                interface_receive_message(self, msg, conn)
 
             # If it is an append entry message from the leader
             elif msg['type'] == 'apn_en':
@@ -259,7 +261,25 @@ class ServerNode:
             elif msg['type'] == 'req_vote':               
                 reply_msg = self.reply_vote(msg)
                 print(f'Replying to {msg["candidate_id"]}')
-                conn.sendall(reply_msg.encode('utf-8'))
+                conn.sendall(reply_msg)
+
+            #Below a node processes all known commands sent to it via interface
+            elif msg['type'] == 'create_group':
+                publicKey_group,privateKey_group = rsa.newkeys(16) 
+                print()
+                publicKey_candidates = [fetch_key_pairs(x)[0] for x in msg['client_ids'] ]
+                log_entry = {
+                    'type':'client',
+                    'change': { 
+                        'term': self._current_term,
+                        'group_id': msg['group_id'],
+                        'client_ids': msg['client_ids'],
+                        'group_public_key': publicKey_group,
+                        'private_key_encrypted': [encrypt_group_key(x, privateKey_group) for x in publicKey_candidates]
+                    }
+                }
+                decrypt_group_key(log_entry['change']['private_key_encrypted'][0],log_entry['change']['client_ids'][0] )
+                interface_receive_message(self, log_entry, conn)
 
     def receive_msg(self):
 
@@ -308,11 +328,11 @@ class ServerNode:
 
 
 if __name__ == "__main__":
-
+    name = 'not_defined'
     if len(sys.argv)>1:
         name = str(sys.argv[1])
 
     while name not in nodos.keys():
         name = input("Provide server name (1-5): ")
 
-    server_node = ServerNode(name, nodos[name]['port'])
+    server_node = ServerNode(chr(ord(name)-ord('1')+ord('a')), nodos[name]['port'])
