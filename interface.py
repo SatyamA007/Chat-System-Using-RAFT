@@ -32,8 +32,7 @@ class Client:
                 'type': 'client',
                 'change': msg_value
             }
-            msg = json.dumps(msg)
-            msg = msg.encode('utf-8')
+            msg = pickle.dumps(msg)
 
             # Sends messge
             tcp.sendall(msg)
@@ -43,8 +42,7 @@ class Client:
                 tcp.close()
                 return
 
-            msg = msg.decode('utf-8')
-            msg = json.loads(msg)
+            msg = pickle.loads(msg)
 
             # Print received data
             print('Msg recieved: ', msg)
@@ -77,8 +75,7 @@ class Client:
                             conn.close()
                             return
 
-                        msg = msg.decode('utf-8')
-                        msg = json.loads(msg)
+                        msg = pickle.loads(msg)
 
                         # Print received data
                         print('Msg recieved: ', msg)

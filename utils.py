@@ -68,7 +68,9 @@ def reply_append_entry(self, msg, conn):
     conn.sendall(reply)
 # Remote procedure call
 def request_vote(self, node, value):
-
+    '''
+    This method is udes by a candidate requesting votes from everyone in its cluster
+    '''
     msg = {
         'type': 'req_vote',
         'term': self._current_term,
@@ -115,8 +117,11 @@ def request_vote(self, node, value):
     return {'candidate_id':'error'}
 
 def send_message(msg, port):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
-        # Connects to server destination
-        tcp.connect(('', port))
-        # Send message
-        tcp.sendall(msg)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
+            # Connects to server destination
+            tcp.connect(('', port))
+            # Send message
+            tcp.sendall(msg)
+    except Exception as e:
+        print(e)

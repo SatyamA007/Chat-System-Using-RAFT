@@ -49,21 +49,21 @@ class ServerNode:
     def config_timeout(self):
 
         if self._state in ['Follower', 'Candidate']:
-            print(f'Configured follower node {self._name} with election timeout to: {self._election_timeout}')
+            print(f'Configured follower node {self._name} with election timeout to: {self._election_timeout}')  if debugging_on else None
             signal.signal(signal.SIGALRM, self.election_timeout_handler)
             signal.alarm(self._election_timeout)
 
         elif self._state == 'Leader':
-            print(f'Configured candidate node {self._name} with heartbeat timeout to: {self._heartbeat_timeout}')
+            print(f'Configured candidate node {self._name} with heartbeat timeout to: {self._heartbeat_timeout}')  if debugging_on else None
             signal.signal(signal.SIGALRM, self.heartbeat_timeout_handler)
             signal.alarm(self._heartbeat_timeout)
 
     def election_timeout_handler(self, signum, frame):
-        print("Reached election timeout!")
+        print("Reached election timeout!")  if debugging_on else None
         raise my_exceptions.ElectionException('Election')
 
     def heartbeat_timeout_handler(self, signum, frame):
-        print("Reached hearbeat timeout!")
+        print("Reached hearbeat timeout!")  if debugging_on else None
         raise my_exceptions.HeartbeatException('Hearbeat')
 
     def reply_vote(self, msg):
@@ -75,7 +75,7 @@ class ServerNode:
         if msg['term'] > self._current_term:
 
             self._state = "Follower"  # Becomes follower again if term is outdated
-            print('Follower')
+            print('Follower')  if debugging_on else None
 
             self._current_term = msg['term']
             self._voted_for = msg['candidate_id']
@@ -97,13 +97,16 @@ class ServerNode:
 
     def commit(self):
         commit_msg = str(self._log)
-        print(type(commit_msg))
+        print(type(commit_msg))  if debugging_on else None
         print('Commiting msg: ', commit_msg)
         with open(f'{self._name}.log', 'a') as log_file:
             log_file.write(commit_msg + '\n')
 
     def send_commit(self):
         commit_msg = str(self._log)
+        print('Informing the interface about the committed message')
+        send_message(pickle.dumps({'Commit Msg':commit_msg, 'Commit Status':'Success'}), interface['port'])
+
         for node, value in nodos.items():
             if value['name'] != self._name:
                 try:
@@ -143,7 +146,7 @@ class ServerNode:
         for node, value in nodos.items():
             if value['name'] != self._name:
                 try:
-                    print(f'Leader trying to append entry for {node}: {value["name"]}')
+                    print(f'Leader trying to append entry for {node}: {value["name"]}')  if debugging_on else None
                     msg = {
                         'type': 'apn_en',
                         'term': self._current_term,
@@ -161,7 +164,7 @@ class ServerNode:
                         # Connects to server destination
                         tcp.connect(('', value['port']))
 
-                        print(f'Send app entry to node {node}: {value["name"]}')
+                        print(f'Send app entry to node {node}: {value["name"]}')  if debugging_on else None
 
                         # Send message
                         tcp.sendall(msg)
@@ -170,7 +173,7 @@ class ServerNode:
                         reply = tcp.recv(4098)
                         reply = pickle.loads(reply)
 
-                        print('Append reply: ', reply)
+                        print('Append reply: ', reply)  if debugging_on else None
 
                         if len(reply['change']) > 0:
                             ack_change = reply['change']
@@ -178,16 +181,16 @@ class ServerNode:
                             print('Log:', self._log)
 
                             if ack_change == self._log:
-                                self._ack_log += 1
-                                #if heard back from majority
-                                if self._ack_log > len(nodos)/2:
-                                    self.commit()
-                                    self.send_commit()
-                                    self._ack_log = 0
-                                    self._log = ''
+                                self._ack_log += 1           
 
                 except Exception as e:
                     print(e)
+        #if heard back from majority
+        if self._ack_log > len(nodos)/2:
+            self.commit()
+            self.send_commit()
+            self._ack_log = 0
+            self._log = ''
 
     def start_election(self):
         """
@@ -198,8 +201,8 @@ class ServerNode:
         self._current_term += 1
         self.config_timeout()
 
-        print(f'Node {self._name} becomes candidate')
-        print('Current term:',  self._current_term)
+        print(f'Node {self._name} becomes candidate')  if debugging_on else None
+        print('Current term:',  self._current_term)  if debugging_on else None
         self._voted_for = self._name
         self._votes_in_term = 1
 
@@ -207,7 +210,7 @@ class ServerNode:
         for node, value in nodos.items():
             time.sleep(0.1)
             if value['name'] != self._name:
-                print(f'Trying to connect {node}: {value["name"]}')
+                print(f'Trying to connect {node}: {value["name"]}')  if debugging_on else None
                 reply = request_vote(self, node, value)
                 
                 if not reply:
@@ -217,7 +220,7 @@ class ServerNode:
 
                     if value == self._name:
                         self._votes_in_term += 1
-                        print('Votes in term', self._votes_in_term)
+                        print('Votes in term', self._votes_in_term)  if debugging_on else None
 
                     # Once a candidate has a majority of votes it becomes leader.
                     if self._votes_in_term > len(nodos)/2:
@@ -234,14 +237,14 @@ class ServerNode:
 
             # If something goes wrong with the data, it gets out of the loop
             if not msg:
-                print('Nothing recieved')
+                print('Nothing recieved')  if debugging_on else None
                 conn.close()
                 return
 
             msg = pickle.loads(msg)
 
             # Prints the received data
-            print('Msg recieved: ', msg)
+            print('Msg recieved: ', msg)  if debugging_on else None
 
             # Send the received data to the customer
             # conn.sendall(date)
@@ -260,13 +263,12 @@ class ServerNode:
 
             elif msg['type'] == 'req_vote':               
                 reply_msg = self.reply_vote(msg)
-                print(f'Replying to {msg["candidate_id"]}')
+                print(f'Replying to {msg["candidate_id"]}')  if debugging_on else None
                 conn.sendall(reply_msg)
 
             #Below a node processes all known commands sent to it via interface
             elif msg['type'] == 'create_group':
                 publicKey_group,privateKey_group = rsa.newkeys(16) 
-                print()
                 publicKey_candidates = [fetch_key_pairs(x)[0] for x in msg['client_ids'] ]
                 log_entry = {
                     'type':'client',
@@ -278,7 +280,7 @@ class ServerNode:
                         'private_key_encrypted': [encrypt_group_key(x, privateKey_group) for x in publicKey_candidates]
                     }
                 }
-                decrypt_group_key(log_entry['change']['private_key_encrypted'][0],log_entry['change']['client_ids'][0] )
+                #decrypt_group_key(log_entry['change']['private_key_encrypted'][0],log_entry['change']['client_ids'][0] )
                 interface_receive_message(self, log_entry, conn)
 
     def receive_msg(self):
@@ -298,15 +300,15 @@ class ServerNode:
                     # Accepts a connection. Returns the socket object (conn) and client address (address)
                     self._conn, self._address = tcp.accept()
 
-                    print('created socket')
+                    print('created socket') if debugging_on else None
                     self.conn_loop(self._conn, self._address)
 
                 except my_exceptions.ElectionException:
-                    print('Starting new election')
+                    print('Starting new election') if debugging_on else None
                     self.start_election()
 
                 except my_exceptions.HeartbeatException:
-                    print('Appending entries')
+                    print('Appending entries') if debugging_on else None
                     self.append_entries()
 
     def get_election_timeout(self):
@@ -316,7 +318,7 @@ class ServerNode:
         :return: timeout between 3 and 5 seconds
         """
         election_timeout = round(random.uniform(5, 8))
-        print(f'Node {self._name} have new election timeout of {election_timeout}')
+        print(f'Node {self._name} have new election timeout of {election_timeout}') if debugging_on else None
         return election_timeout
 
     def get_hearbeat_timeout(self):

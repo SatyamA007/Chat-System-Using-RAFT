@@ -9,7 +9,7 @@ nodos = {
 interface = {'port': 5004}
 
 heartbeatInterval = 2
-
+debugging_on = False
 
 import os.path
 import rsa
