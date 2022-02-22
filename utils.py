@@ -34,7 +34,7 @@ def interface_receive_message(self, msg):
 
 def redirect_to_leader(self, msg):
     next_node_port = (self.PORT - 5000)%(len(nodos)) + 5001
-    send_message(pickle.dumps(msg), next_node_port)
+    send_message(msg, next_node_port)
     
 def reply_append_entry(self, msg, conn):
     """
@@ -113,7 +113,7 @@ def send_message(msg, port):
             # Connects to server destination
             tcp.connect(('', port))
             # Send message
-            tcp.sendall(msg)
+            tcp.sendall(pickle.dumps(msg))
     except Exception as e:
         print(e)
 

@@ -89,8 +89,8 @@ class Client:
 
     def get_command(self):
         while True:
-            client = input("Client for sending the command to (1-5): ")
-            if client not in nodos.keys() or self.check_invalid_command(client.strip()):
+            client = input("Client for sending the command to (1-5): ").strip()
+            if client not in nodos.keys() or self.check_invalid_command(client):
                 print("Wrong Input!! Try agian...")
                 continue
             else:
@@ -120,12 +120,17 @@ class Client:
             msg = { 'type': 'print_group', 'group_id': command[1] }
             
         elif command[0] =="faillink" and len(command)==3 and command[1] in nodos.keys() and command[2] in nodos.keys():
-            msg = { 'type': 'fail_link', 'node1': command[1], 'node2': command[2] }
-            
+            msg = { 'type': 'fail_link', 'src': command[1], 'dst': command[2] }
+
+        elif command[0] =="fixlink" and len(command)==3 and command[1] in nodos.keys() and command[2] in nodos.keys():
+            msg = { 'type': 'fix_link', 'src': command[1], 'dst': command[2] }
+
+        elif command[0] =="failprocess" and len(command)==2 and command[1] in nodos.keys():
+            msg = { 'type': 'fail_process', 'node': command[1] }
+
         else:
             return True
 
-        msg = pickle.dumps(msg)
         send_message(msg, nodos[client]['port'])
         return False  
 

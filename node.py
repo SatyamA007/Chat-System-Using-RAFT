@@ -51,21 +51,21 @@ class ServerNode:
     def config_timeout(self):
 
         if self._state in ['Follower', 'Candidate']:
-            print(f'Configured follower node {self._name} with election timeout to: {self._election_timeout}')  if debugging_on else None
+            print(f'Configured follower node {self._name} with election timeout to: {self._election_timeout}')  if DEBUGGING_ON else None
             signal.signal(signal.SIGALRM, self.election_timeout_handler)
             signal.alarm(self._election_timeout)
 
         elif self._state == 'Leader':
-            print(f'Configured candidate node {self._name} with heartbeat timeout to: {self._heartbeat_timeout}')  if debugging_on else None
+            print(f'Configured candidate node {self._name} with heartbeat timeout to: {self._heartbeat_timeout}')  if DEBUGGING_ON else None
             signal.signal(signal.SIGALRM, self.heartbeat_timeout_handler)
             signal.alarm(self._heartbeat_timeout)
 
     def election_timeout_handler(self, signum, frame):
-        print("Reached election timeout!")  if debugging_on else None
+        print("Reached election timeout!")  if DEBUGGING_ON else None
         raise my_exceptions.ElectionException('Election')
 
     def heartbeat_timeout_handler(self, signum, frame):
-        print("Reached hearbeat timeout!")  if debugging_on else None
+        print("Reached hearbeat timeout!")  if DEBUGGING_ON else None
         raise my_exceptions.HeartbeatException('Hearbeat')
 
     def reply_vote(self, msg):
@@ -77,7 +77,7 @@ class ServerNode:
         if msg['term'] > self._current_term:
 
             self._state = "Follower"  # Becomes follower again if term is outdated
-            print('Follower')  if debugging_on else None
+            print('Follower')  if DEBUGGING_ON else None
 
             self._current_term = msg['term']
             self._voted_for = msg['candidate_id']
@@ -99,7 +99,7 @@ class ServerNode:
 
     def commit(self):
         commit_msg = str(self._log)
-        print(type(commit_msg))  if debugging_on else None
+        print(type(commit_msg))  if DEBUGGING_ON else None
         print('Commiting msg: ', commit_msg)
         with open(f'{self._name}.log', 'a') as log_file:
             log_file.write(commit_msg + '\n')
@@ -107,7 +107,7 @@ class ServerNode:
     def send_commit(self):
         commit_msg = str(self._log)
         print('Informing the interface about the committed message')
-        send_message(pickle.dumps({'Commit Msg':commit_msg, 'Commit Status':'Success'}), interface['port'])
+        send_message({'Commit Msg':commit_msg, 'Commit Status':'Success'}, interface['port'])
 
         for node, value in nodos.items():
             if value['name'] != self._name:
@@ -123,7 +123,6 @@ class ServerNode:
                         'leader_commit': self._to_commit,
                         'change': commit_msg
                     }
-                    msg = pickle.dumps(msg)
 
                     send_message(msg, value['port'])
 
@@ -148,7 +147,7 @@ class ServerNode:
         for node, value in nodos.items():
             if value['name'] != self._name:
                 try:
-                    print(f'Leader trying to append entry for {node}: {value["name"]}')  if debugging_on else None
+                    print(f'Leader trying to append entry for {node}: {value["name"]}')  if DEBUGGING_ON else None
                     msg = {
                         'type': 'apn_en',
                         'term': self._current_term,
@@ -166,7 +165,7 @@ class ServerNode:
                         # Connects to server destination
                         tcp.connect(('', value['port']))
 
-                        print(f'Send app entry to node {node}: {value["name"]}')  if debugging_on else None
+                        print(f'Send app entry to node {node}: {value["name"]}')  if DEBUGGING_ON else None
 
                         # Send message
                         tcp.sendall(msg)
@@ -175,7 +174,7 @@ class ServerNode:
                         reply = tcp.recv(4098)
                         reply = pickle.loads(reply)
 
-                        print('Append reply: ', reply)  if debugging_on else None
+                        print('Append reply: ', reply)  if DEBUGGING_ON else None
 
                         if len(reply['change']) > 0:
                             ack_change = reply['change']
@@ -203,8 +202,8 @@ class ServerNode:
         self._current_term += 1
         self.config_timeout()
 
-        print(f'Node {self._name} becomes candidate')  if debugging_on else None
-        print('Current term:',  self._current_term)  if debugging_on else None
+        print(f'Node {self._name} becomes candidate')  if DEBUGGING_ON else None
+        print('Current term:',  self._current_term)  if DEBUGGING_ON else None
         self._voted_for = self._name
         self._votes_in_term = 1
 
@@ -212,7 +211,7 @@ class ServerNode:
         for node, value in nodos.items():
             time.sleep(0.1)
             if value['name'] != self._name:
-                print(f'Trying to connect {node}: {value["name"]}')  if debugging_on else None
+                print(f'Trying to connect {node}: {value["name"]}')  if DEBUGGING_ON else None
                 reply = request_vote(self, node, value)
                 
                 if not reply:
@@ -222,7 +221,7 @@ class ServerNode:
 
                     if value == self._name:
                         self._votes_in_term += 1
-                        print('Votes in term', self._votes_in_term)  if debugging_on else None
+                        print('Votes in term', self._votes_in_term)  if DEBUGGING_ON else None
 
                     # Once a candidate has a majority of votes it becomes leader.
                     if self._votes_in_term > len(nodos)/2:
@@ -239,14 +238,14 @@ class ServerNode:
 
             # If something goes wrong with the data, it gets out of the loop
             if not msg:
-                print('Nothing recieved')  if debugging_on else None
+                print('Nothing recieved')  if DEBUGGING_ON else None
                 conn.close()
                 return
 
             msg = pickle.loads(msg)
 
             # Prints the received data
-            print('Msg recieved: ', msg)  if debugging_on else None
+            print('Msg recieved: ', msg)  if DEBUGGING_ON else None
 
             # Send the received data to the customer
             # conn.sendall(date)
@@ -265,18 +264,18 @@ class ServerNode:
 
             elif msg['type'] == 'req_vote':               
                 reply_msg = self.reply_vote(msg)
-                print(f'Replying to {msg["candidate_id"]}')  if debugging_on else None
+                print(f'Replying to {msg["candidate_id"]}')  if DEBUGGING_ON else None
                 conn.sendall(reply_msg)
 
             #Below a node processes all known commands sent to it via interface
             elif msg['type'] == 'create_group':
-                publicKey_group,privateKey_group = rsa.newkeys(16) 
+                publicKey_group,privateKey_group = rsa.newkeys(GROUP_KEY_NBITS) 
 
                 log_entry = {
                     'type':'client',
                     'change': { 
-                        'type': 'create',
                         'term': self._current_term,
+                        'type': 'createGroup',
                         'group_id': msg['group_id'],
                         'client_ids': msg['client_ids'],
                         'group_public_key': publicKey_group,
@@ -287,37 +286,110 @@ class ServerNode:
             
             elif msg['type'] == 'add2group':
                 #TODO: Add method to find the group, return latest entry if it exists
-                log_for_g_id = {'term': 49, 'group_id': 'j2', 'client_ids': ['2', '1'], 'group_public_key': PublicKey(35611, 65537), 'private_key_encrypted': [b'\x83\x13[\x07e\n\xc7\x18\xa6\xd1\x95\xe1Ug\xfa\x1c\x15\xdd\x83\xe5\xc1\x15vHt\x81\xa8\x95\xa8\xc8\xfc\xc1RY\x9aL\xc8\x01\x8e}\x91\xf2rX\xd8\x17U\x91\xa3~3\xc6G6_\x8b\x89\xba\xd1w\x1f\xa7Ba\x8a\xc0\x8d\xca\xda\xe6\x9f\x01\xe7\xb5\xff<\xc9u\xf0\xdd\x80\xf8\xe7*\x01\xc3\x11\xf5\xdb\x1e\x1c,m\xe6>znBH\xb7\x92u\x8f\x0eh wB\xc6\xc1\xa2\x9b\xd40*\xc26\xaf\x91=\xd8\xf9C\x00)5\xd3`', b'\x01\xcb\xac\xe8\x05R<rj\xf6#\xb9\xd7`\xd9\xd2\x07\x93\x94\x07\x7f**3J\xee\xa1\x1e)\x9au7\xf7\x1a\x8c\x1c\xf0)}8\xec\r\xde\xfdC\x9e"U\ty#\xa1U>\xed\xbb\xf2\xaa\x8f(\xb9\xdd\xa6\xd2\x15\xb3\x8a\xed\x19\xf8\xdb\xd7\xb6\xf9\xd5\x1a\xed\x85qNA\x93\xa2P%\xcb`56u\xe6\xb7\x1fp\xcf\xd9\x18B\xb0H7\xbfp\xd0\xc9L\xf2h\xda\x84\x88\xe5\x1c\xc6RS/H\xeba\xf3ml\xee:8\x15E']}
+                log_for_g_id = {'term': 13, 'type': 'createGroup', 'group_id': 'g1', 'client_ids': ['2', '1'], 'group_public_key': PublicKey(86702799256623328332783554034575463517726992144676035689201744930242486124477, 65537), 'private_key_encrypted': [b'(\xfd\xb5\xd0\xde\xe1r\xdd\x10N\xf3\t\xb7\xea1\xab\xc2Hw!U\xab\xe6qd\x9d6\x88\xdd*\x1dFv"\x13\xfbg\xa5,\x87^\xc8\xcb\xf18\xe8/\x90\xc7\xad\xb8Q\x1f\xc3\xef\x17\x87Vj\x08\xfb\x82\xf4\x8aL\x99\xbaX\x81\xcb\x1b\x87_\x9b\xa4\xcas\x15\xa9\x0c\x17\x01\x00D\\LO\xbf\xb0\x1a\x93gv-\x89\x9fgI\x9a%\xb5\xb5\xb6\xeb\xab\xc4T:q\x00\x01\xc8\x96\xd0\xf2\xfa\x9c\x0e\x10p\xdd\xe3\xed}\x08\x98Z\xfe\xaen\x10\xeb\xf0 \xafM\x89\xf9\xdd\x1e\x8e\x93X\xf1S\xb9\x17\xd0O\xba\r\x03\xeddL\xf1)C=|\xd8\t\xd8\xdczS\x1dDJ\x94\xb9l\xb6\xd6N\xbc\x9d\xaf\x1f\x16&\xd1\x9b\x7f\'\x06x.\xbc|\xe7\xf5\xdbn\xc7\xd4x\'w\\\xf4 Wrg;,f\xa0(\xaaS\x82\xa6\xda\x02\x01\xca\n\x87]K\xa3\x0b\x08\x98\xc5\xfe\xe5\x89b\xcd\x14\x96cF\xa2\xb2\xee\x93\x83h\x9c,\xefw\xcbi\xb2rV\xbe,\xd1\x8b\x87', b'\x00\x02\x82\x99\xccqK\x9f]\xd5\x0c\x83\x8ar\xc1\x8c0up\xb9F^\x93\xeb\x90\xaeTz\xbb\xd0^\xf4\x87/\rq\x8f\xe6\xef\x85\x87\x00\x80\x04\x95\xcb\x00\x00\x00\x00\x00\x00\x00\x8c\x07rsa.key\x94\x8c\nPrivateKey\x94\x93\x94)\x81\x94(\x8a!\xbd\xbf\xf8\x12ln\xd9$\x16!\xba\x0e6\x18\xc8\xb8\xda1\x88\x0c\xed7\x9c\xb78uG\xd8\x9a\x0b\xb0\xbf\x00J\x01\x00\x01\x00\x8a!\x193+\x11\xed57T?H\xa5<\xad\xb8I\xe6EF\xbb\x87\x83r$Bq\xc2\x80/\x17W\x04\xa9\x00\x8a\x12\x9f*6\xcb\xa8\xb3\xaa\xa3\xd0\x91C\xf0\xb6\xa5\t\x9b\xde\x00\x8a\x10#\x94\xf3[4\xa5\xe9pj\x8c\x86\x03\xa2q\xdc\x00\x8a\x12A\x7f\\#[i\x8aQ\xb6!\x9f\xabDa\xa0\xb6\x89\x00\x8a\x0f\r\xb1\xaa$\xf0=,t5\x81\x93\x80E\x122\x8a\x12\x947m8p\xf4\xa8\x1a\xbe\xa8\x87HM<\xb9\x8d\xd5\x00t\x94b.']}
 
                 if log_for_g_id and self._id in log_for_g_id['client_ids'] and msg['node'] not in log_for_g_id['client_ids']: #check if this client currently in the group 
                     
                     self_idx_in_group = log_for_g_id['client_ids'].index(self._id)
                     privateKey_group = decrypt_group_key(log_for_g_id['private_key_encrypted'][self_idx_in_group], self._id)
-                    print(msg)
+
                     log_for_g_id['private_key_encrypted'].append(encrypt_group_key(msg['node'], privateKey_group))
                     log_for_g_id['client_ids'].append(msg['node'])
                     
                     log_entry = {
                     'type':'client',
                     'change': { 
-                        'type': 'add',
                         'term': self._current_term,
+                        'type': 'add',
                         'group_id': log_for_g_id['group_id'],
                         'client_ids': log_for_g_id['client_ids'],
                         'group_public_key': log_for_g_id['group_public_key'],
-                        'private_key_encrypted': log_for_g_id['private_key_encrypted']
+                        'private_key_encrypted': log_for_g_id['private_key_encrypted'],
+                        'added_member':msg['node']
                         }
                     }
                     interface_receive_message(self, log_entry)
                 else:
                     if not log_for_g_id:
-                        send_message(pickle.dumps({'Error adding memeber':'Group with ID = '+msg['group_id']+' does not exist!', 'Commit Status':'Aborted'}), interface['port'])
+                        send_message({'Error adding memeber':'Group with ID = '+msg['group_id']+' does not exist!', 'Commit Status':'Aborted'}, interface['port'])
                     elif msg['node'] in log_for_g_id['client_ids']:
-                        send_message(pickle.dumps({'Error adding memeber':'Client '+ msg['node']+' already a member of '+msg['group_id'], 'Commit Status':'Aborted'}), interface['port'])
+                        send_message({'Error adding memeber':'Client '+ msg['node']+' already a member of '+msg['group_id'], 'Commit Status':'Aborted'}, interface['port'])
                     else:
-                        send_message(pickle.dumps({'Error adding memeber':'Client in-charge not a member of '+msg['group_id'], 'Commit Status':'Aborted'}), interface['port'])
-                        
+                        send_message({'Error adding memeber':'Client in-charge not a member of '+msg['group_id'], 'Commit Status':'Aborted'}, interface['port'])
+            
+            elif msg['type'] == 'kick':
+                #TODO: Add method to find the group, return latest entry if it exists
+                log_for_g_id = {'term': 13, 'type': 'createGroup', 'group_id': 'g1', 'client_ids': ['2', '1'], 'group_public_key': PublicKey(86702799256623328332783554034575463517726992144676035689201744930242486124477, 65537), 'private_key_encrypted': [b'(\xfd\xb5\xd0\xde\xe1r\xdd\x10N\xf3\t\xb7\xea1\xab\xc2Hw!U\xab\xe6qd\x9d6\x88\xdd*\x1dFv"\x13\xfbg\xa5,\x87^\xc8\xcb\xf18\xe8/\x90\xc7\xad\xb8Q\x1f\xc3\xef\x17\x87Vj\x08\xfb\x82\xf4\x8aL\x99\xbaX\x81\xcb\x1b\x87_\x9b\xa4\xcas\x15\xa9\x0c\x17\x01\x00D\\LO\xbf\xb0\x1a\x93gv-\x89\x9fgI\x9a%\xb5\xb5\xb6\xeb\xab\xc4T:q\x00\x01\xc8\x96\xd0\xf2\xfa\x9c\x0e\x10p\xdd\xe3\xed}\x08\x98Z\xfe\xaen\x10\xeb\xf0 \xafM\x89\xf9\xdd\x1e\x8e\x93X\xf1S\xb9\x17\xd0O\xba\r\x03\xeddL\xf1)C=|\xd8\t\xd8\xdczS\x1dDJ\x94\xb9l\xb6\xd6N\xbc\x9d\xaf\x1f\x16&\xd1\x9b\x7f\'\x06x.\xbc|\xe7\xf5\xdbn\xc7\xd4x\'w\\\xf4 Wrg;,f\xa0(\xaaS\x82\xa6\xda\x02\x01\xca\n\x87]K\xa3\x0b\x08\x98\xc5\xfe\xe5\x89b\xcd\x14\x96cF\xa2\xb2\xee\x93\x83h\x9c,\xefw\xcbi\xb2rV\xbe,\xd1\x8b\x87', b'\x00\x02\x82\x99\xccqK\x9f]\xd5\x0c\x83\x8ar\xc1\x8c0up\xb9F^\x93\xeb\x90\xaeTz\xbb\xd0^\xf4\x87/\rq\x8f\xe6\xef\x85\x87\x00\x80\x04\x95\xcb\x00\x00\x00\x00\x00\x00\x00\x8c\x07rsa.key\x94\x8c\nPrivateKey\x94\x93\x94)\x81\x94(\x8a!\xbd\xbf\xf8\x12ln\xd9$\x16!\xba\x0e6\x18\xc8\xb8\xda1\x88\x0c\xed7\x9c\xb78uG\xd8\x9a\x0b\xb0\xbf\x00J\x01\x00\x01\x00\x8a!\x193+\x11\xed57T?H\xa5<\xad\xb8I\xe6EF\xbb\x87\x83r$Bq\xc2\x80/\x17W\x04\xa9\x00\x8a\x12\x9f*6\xcb\xa8\xb3\xaa\xa3\xd0\x91C\xf0\xb6\xa5\t\x9b\xde\x00\x8a\x10#\x94\xf3[4\xa5\xe9pj\x8c\x86\x03\xa2q\xdc\x00\x8a\x12A\x7f\\#[i\x8aQ\xb6!\x9f\xabDa\xa0\xb6\x89\x00\x8a\x0f\r\xb1\xaa$\xf0=,t5\x81\x93\x80E\x122\x8a\x12\x947m8p\xf4\xa8\x1a\xbe\xa8\x87HM<\xb9\x8d\xd5\x00t\x94b.']}
 
+                if log_for_g_id and self._id in log_for_g_id['client_ids'] and msg['node'] in log_for_g_id['client_ids']: #check if this client currently in the group 
+                    publicKey_group,privateKey_group = rsa.newkeys(GROUP_KEY_NBITS) 
+                    
+                    log_for_g_id['client_ids'].remove(msg['node'])
+                    log_for_g_id['private_key_encrypted']= [encrypt_group_key(x, privateKey_group) for x in log_for_g_id['client_ids']]
+                    
+                    log_entry = {
+                    'type':'client',
+                    'change': { 
+                        'term': self._current_term,
+                        'type': 'kick',
+                        'group_id': log_for_g_id['group_id'],
+                        'client_ids': log_for_g_id['client_ids'],
+                        'group_public_key': publicKey_group,
+                        'private_key_encrypted': log_for_g_id['private_key_encrypted'],
+                        'kicked_member':msg['node']
+                        }
+                    }
+                    interface_receive_message(self, log_entry)
+                else:
+                    if not log_for_g_id:
+                        send_message({'Error kicking memeber':'Group with ID = '+msg['group_id']+' does not exist!', 'Commit Status':'Aborted'}, interface['port'])
+                    elif msg['node'] not in log_for_g_id['client_ids']:
+                        send_message({'Error kicking memeber':'Client '+ msg['node']+' not a member of '+msg['group_id'], 'Commit Status':'Aborted'}, interface['port'])
+                    else:
+                        send_message({'Error kicking memeber':'Client in-charge not a member of '+msg['group_id'], 'Commit Status':'Aborted'}, interface['port'])
+            
+            elif msg['type']=='write_message':
+                #TODO: Add method to find the group, return latest entry if it exists
+                log_for_g_id = {'term': 13, 'type': 'createGroup', 'group_id': 'g1', 'client_ids': ['2', '1'], 'group_public_key': PublicKey(86702799256623328332783554034575463517726992144676035689201744930242486124477, 65537), 'private_key_encrypted': [b'(\xfd\xb5\xd0\xde\xe1r\xdd\x10N\xf3\t\xb7\xea1\xab\xc2Hw!U\xab\xe6qd\x9d6\x88\xdd*\x1dFv"\x13\xfbg\xa5,\x87^\xc8\xcb\xf18\xe8/\x90\xc7\xad\xb8Q\x1f\xc3\xef\x17\x87Vj\x08\xfb\x82\xf4\x8aL\x99\xbaX\x81\xcb\x1b\x87_\x9b\xa4\xcas\x15\xa9\x0c\x17\x01\x00D\\LO\xbf\xb0\x1a\x93gv-\x89\x9fgI\x9a%\xb5\xb5\xb6\xeb\xab\xc4T:q\x00\x01\xc8\x96\xd0\xf2\xfa\x9c\x0e\x10p\xdd\xe3\xed}\x08\x98Z\xfe\xaen\x10\xeb\xf0 \xafM\x89\xf9\xdd\x1e\x8e\x93X\xf1S\xb9\x17\xd0O\xba\r\x03\xeddL\xf1)C=|\xd8\t\xd8\xdczS\x1dDJ\x94\xb9l\xb6\xd6N\xbc\x9d\xaf\x1f\x16&\xd1\x9b\x7f\'\x06x.\xbc|\xe7\xf5\xdbn\xc7\xd4x\'w\\\xf4 Wrg;,f\xa0(\xaaS\x82\xa6\xda\x02\x01\xca\n\x87]K\xa3\x0b\x08\x98\xc5\xfe\xe5\x89b\xcd\x14\x96cF\xa2\xb2\xee\x93\x83h\x9c,\xefw\xcbi\xb2rV\xbe,\xd1\x8b\x87', b'\x00\x02\x82\x99\xccqK\x9f]\xd5\x0c\x83\x8ar\xc1\x8c0up\xb9F^\x93\xeb\x90\xaeTz\xbb\xd0^\xf4\x87/\rq\x8f\xe6\xef\x85\x87\x00\x80\x04\x95\xcb\x00\x00\x00\x00\x00\x00\x00\x8c\x07rsa.key\x94\x8c\nPrivateKey\x94\x93\x94)\x81\x94(\x8a!\xbd\xbf\xf8\x12ln\xd9$\x16!\xba\x0e6\x18\xc8\xb8\xda1\x88\x0c\xed7\x9c\xb78uG\xd8\x9a\x0b\xb0\xbf\x00J\x01\x00\x01\x00\x8a!\x193+\x11\xed57T?H\xa5<\xad\xb8I\xe6EF\xbb\x87\x83r$Bq\xc2\x80/\x17W\x04\xa9\x00\x8a\x12\x9f*6\xcb\xa8\xb3\xaa\xa3\xd0\x91C\xf0\xb6\xa5\t\x9b\xde\x00\x8a\x10#\x94\xf3[4\xa5\xe9pj\x8c\x86\x03\xa2q\xdc\x00\x8a\x12A\x7f\\#[i\x8aQ\xb6!\x9f\xabDa\xa0\xb6\x89\x00\x8a\x0f\r\xb1\xaa$\xf0=,t5\x81\x93\x80E\x122\x8a\x12\x947m8p\xf4\xa8\x1a\xbe\xa8\x87HM<\xb9\x8d\xd5\x00t\x94b.']}
+
+                if log_for_g_id:
+                    encrypted_msg = rsa.encrypt(msg['message'].encode('utf8'), log_for_g_id['group_public_key'])
+                    log_entry = {
+                        'type':'client',
+                        'change': { 
+                            'term': self._current_term,
+                            'type': 'message',
+                            'group_id': log_for_g_id['group_id'],
+                            'client_ids': log_for_g_id['client_ids'],
+                            'group_public_key': log_for_g_id['group_public_key'],
+                            'private_key_encrypted':log_for_g_id['private_key_encrypted'],
+                            'sender': self._id,
+                            'message':encrypted_msg
+                        }
+                    }
+                    interface_receive_message(self, log_entry)
+                else:
+                    send_message({'Error writing to group': 'Group with id = '+msg['group_id']+' does not exist!', 'Commit Status':'Aborted'}, interface['port'])
+            
+            elif msg['type'] == 'print_group':
+                                
+                my_logs = [{'term': 26, 'type': 'message', 'group_id': 'g1', 'client_ids': ['2', '1'], 'group_public_key': PublicKey(86702799256623328332783554034575463517726992144676035689201744930242486124477, 65537), 'sender': '1', 'message': b"\x14?\xa8\xb2\x91\x11\x1fH\xb4\xad3\x1dz9\x1ed{\x15'\xbd\x9bSg\x88\x9d&\xbb\xd4\xd5N\xffu", 'private_key_encrypted': [b'(\xfd\xb5\xd0\xde\xe1r\xdd\x10N\xf3\t\xb7\xea1\xab\xc2Hw!U\xab\xe6qd\x9d6\x88\xdd*\x1dFv"\x13\xfbg\xa5,\x87^\xc8\xcb\xf18\xe8/\x90\xc7\xad\xb8Q\x1f\xc3\xef\x17\x87Vj\x08\xfb\x82\xf4\x8aL\x99\xbaX\x81\xcb\x1b\x87_\x9b\xa4\xcas\x15\xa9\x0c\x17\x01\x00D\\LO\xbf\xb0\x1a\x93gv-\x89\x9fgI\x9a%\xb5\xb5\xb6\xeb\xab\xc4T:q\x00\x01\xc8\x96\xd0\xf2\xfa\x9c\x0e\x10p\xdd\xe3\xed}\x08\x98Z\xfe\xaen\x10\xeb\xf0 \xafM\x89\xf9\xdd\x1e\x8e\x93X\xf1S\xb9\x17\xd0O\xba\r\x03\xeddL\xf1)C=|\xd8\t\xd8\xdczS\x1dDJ\x94\xb9l\xb6\xd6N\xbc\x9d\xaf\x1f\x16&\xd1\x9b\x7f\'\x06x.\xbc|\xe7\xf5\xdbn\xc7\xd4x\'w\\\xf4 Wrg;,f\xa0(\xaaS\x82\xa6\xda\x02\x01\xca\n\x87]K\xa3\x0b\x08\x98\xc5\xfe\xe5\x89b\xcd\x14\x96cF\xa2\xb2\xee\x93\x83h\x9c,\xefw\xcbi\xb2rV\xbe,\xd1\x8b\x87', b'\x00\x02\x82\x99\xccqK\x9f]\xd5\x0c\x83\x8ar\xc1\x8c0up\xb9F^\x93\xeb\x90\xaeTz\xbb\xd0^\xf4\x87/\rq\x8f\xe6\xef\x85\x87\x00\x80\x04\x95\xcb\x00\x00\x00\x00\x00\x00\x00\x8c\x07rsa.key\x94\x8c\nPrivateKey\x94\x93\x94)\x81\x94(\x8a!\xbd\xbf\xf8\x12ln\xd9$\x16!\xba\x0e6\x18\xc8\xb8\xda1\x88\x0c\xed7\x9c\xb78uG\xd8\x9a\x0b\xb0\xbf\x00J\x01\x00\x01\x00\x8a!\x193+\x11\xed57T?H\xa5<\xad\xb8I\xe6EF\xbb\x87\x83r$Bq\xc2\x80/\x17W\x04\xa9\x00\x8a\x12\x9f*6\xcb\xa8\xb3\xaa\xa3\xd0\x91C\xf0\xb6\xa5\t\x9b\xde\x00\x8a\x10#\x94\xf3[4\xa5\xe9pj\x8c\x86\x03\xa2q\xdc\x00\x8a\x12A\x7f\\#[i\x8aQ\xb6!\x9f\xabDa\xa0\xb6\x89\x00\x8a\x0f\r\xb1\xaa$\xf0=,t5\x81\x93\x80E\x122\x8a\x12\x947m8p\xf4\xa8\x1a\xbe\xa8\x87HM<\xb9\x8d\xd5\x00t\x94b.']}]
+
+                messages_with_gid = []
+
+                for log in my_logs:
+                    if log['group_id'] == msg['group_id'] and log['type'] == 'message' and self._id in log['client_ids']:
+                        my_idx_in_group = log['client_ids'].index(self._id)
+                        privateKey_group = decrypt_group_key(log['private_key_encrypted'][my_idx_in_group], self._id)
+                        decrypted_message = decrypt_message(log['message'], privateKey_group)
+                        messages_with_gid.append({'message': decrypted_message,'sender': log['sender']} )
+                #Even if the response seems empty, the group may still have messages from external senders, 
+                # or this client might be that external sender but does not have the private key for decryption
+                send_message(messages_with_gid, interface['port']) if messages_with_gid else send_message("Empty response: Given client "+self._id+" cannot decypher messages for group "+msg['group_id']+" OR no such group exists.", interface['port'])
+
+                
+
+                
     def receive_msg(self):
 
         print('creating socket')
@@ -335,15 +407,15 @@ class ServerNode:
                     # Accepts a connection. Returns the socket object (conn) and client address (address)
                     self._conn, self._address = tcp.accept()
 
-                    print('created socket') if debugging_on else None
+                    print('created socket') if DEBUGGING_ON else None
                     self.conn_loop(self._conn, self._address)
 
                 except my_exceptions.ElectionException:
-                    print('Starting new election') if debugging_on else None
+                    print('Starting new election') if DEBUGGING_ON else None
                     self.start_election()
 
                 except my_exceptions.HeartbeatException:
-                    print('Appending entries') if debugging_on else None
+                    print('Appending entries') if DEBUGGING_ON else None
                     self.append_entries()
 
     def get_election_timeout(self):
@@ -353,7 +425,7 @@ class ServerNode:
         :return: timeout between 3 and 5 seconds
         """
         election_timeout = round(random.uniform(5, 8))
-        print(f'Node {self._name} have new election timeout of {election_timeout}') if debugging_on else None
+        print(f'Node {self._name} have new election timeout of {election_timeout}') if DEBUGGING_ON else None
         return election_timeout
 
     def get_hearbeat_timeout(self):
