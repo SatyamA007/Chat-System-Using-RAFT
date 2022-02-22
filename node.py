@@ -1,4 +1,5 @@
 import rsa
+from rsa import PublicKey
 import pickle
 
 from utils import *
@@ -6,9 +7,10 @@ from settings import *
 
 class ServerNode:
 
-    def __init__(self, node_id, node_port):
+    def __init__(self, node_id, name, node_port):
 
-        self._name = node_id        # Identification of the server node
+        self._name = name        # Identification of the server node
+        self._id = node_id        # Identification of the server node
         self._state = 'Follower'    # Every server starts as follower
 
         self.PORT = int(node_port)   # Arbitrary port for the server
@@ -251,7 +253,7 @@ class ServerNode:
 
             # If it is a message sent from a client
             if msg['type'] == 'client':
-                interface_receive_message(self, msg, conn)
+                interface_receive_message(self, msg)
 
             # If it is an append entry message from the leader
             elif msg['type'] == 'apn_en':
@@ -269,19 +271,52 @@ class ServerNode:
             #Below a node processes all known commands sent to it via interface
             elif msg['type'] == 'create_group':
                 publicKey_group,privateKey_group = rsa.newkeys(16) 
-                publicKey_candidates = [fetch_key_pairs(x)[0] for x in msg['client_ids'] ]
+
                 log_entry = {
                     'type':'client',
                     'change': { 
+                        'type': 'create',
                         'term': self._current_term,
                         'group_id': msg['group_id'],
                         'client_ids': msg['client_ids'],
                         'group_public_key': publicKey_group,
-                        'private_key_encrypted': [encrypt_group_key(x, privateKey_group) for x in publicKey_candidates]
+                        'private_key_encrypted': [encrypt_group_key(x, privateKey_group) for x in msg['client_ids']]
                     }
                 }
-                #decrypt_group_key(log_entry['change']['private_key_encrypted'][0],log_entry['change']['client_ids'][0] )
-                interface_receive_message(self, log_entry, conn)
+                interface_receive_message(self, log_entry)
+            
+            elif msg['type'] == 'add2group':
+                #TODO: Add method to find the group, return latest entry if it exists
+                log_for_g_id = {'term': 49, 'group_id': 'j2', 'client_ids': ['2', '1'], 'group_public_key': PublicKey(35611, 65537), 'private_key_encrypted': [b'\x83\x13[\x07e\n\xc7\x18\xa6\xd1\x95\xe1Ug\xfa\x1c\x15\xdd\x83\xe5\xc1\x15vHt\x81\xa8\x95\xa8\xc8\xfc\xc1RY\x9aL\xc8\x01\x8e}\x91\xf2rX\xd8\x17U\x91\xa3~3\xc6G6_\x8b\x89\xba\xd1w\x1f\xa7Ba\x8a\xc0\x8d\xca\xda\xe6\x9f\x01\xe7\xb5\xff<\xc9u\xf0\xdd\x80\xf8\xe7*\x01\xc3\x11\xf5\xdb\x1e\x1c,m\xe6>znBH\xb7\x92u\x8f\x0eh wB\xc6\xc1\xa2\x9b\xd40*\xc26\xaf\x91=\xd8\xf9C\x00)5\xd3`', b'\x01\xcb\xac\xe8\x05R<rj\xf6#\xb9\xd7`\xd9\xd2\x07\x93\x94\x07\x7f**3J\xee\xa1\x1e)\x9au7\xf7\x1a\x8c\x1c\xf0)}8\xec\r\xde\xfdC\x9e"U\ty#\xa1U>\xed\xbb\xf2\xaa\x8f(\xb9\xdd\xa6\xd2\x15\xb3\x8a\xed\x19\xf8\xdb\xd7\xb6\xf9\xd5\x1a\xed\x85qNA\x93\xa2P%\xcb`56u\xe6\xb7\x1fp\xcf\xd9\x18B\xb0H7\xbfp\xd0\xc9L\xf2h\xda\x84\x88\xe5\x1c\xc6RS/H\xeba\xf3ml\xee:8\x15E']}
+
+                if log_for_g_id and self._id in log_for_g_id['client_ids'] and msg['node'] not in log_for_g_id['client_ids']: #check if this client currently in the group 
+                    
+                    self_idx_in_group = log_for_g_id['client_ids'].index(self._id)
+                    privateKey_group = decrypt_group_key(log_for_g_id['private_key_encrypted'][self_idx_in_group], self._id)
+                    print(msg)
+                    log_for_g_id['private_key_encrypted'].append(encrypt_group_key(msg['node'], privateKey_group))
+                    log_for_g_id['client_ids'].append(msg['node'])
+                    
+                    log_entry = {
+                    'type':'client',
+                    'change': { 
+                        'type': 'add',
+                        'term': self._current_term,
+                        'group_id': log_for_g_id['group_id'],
+                        'client_ids': log_for_g_id['client_ids'],
+                        'group_public_key': log_for_g_id['group_public_key'],
+                        'private_key_encrypted': log_for_g_id['private_key_encrypted']
+                        }
+                    }
+                    interface_receive_message(self, log_entry)
+                else:
+                    if not log_for_g_id:
+                        send_message(pickle.dumps({'Error adding memeber':'Group with ID = '+msg['group_id']+' does not exist!', 'Commit Status':'Aborted'}), interface['port'])
+                    elif msg['node'] in log_for_g_id['client_ids']:
+                        send_message(pickle.dumps({'Error adding memeber':'Client '+ msg['node']+' already a member of '+msg['group_id'], 'Commit Status':'Aborted'}), interface['port'])
+                    else:
+                        send_message(pickle.dumps({'Error adding memeber':'Client in-charge not a member of '+msg['group_id'], 'Commit Status':'Aborted'}), interface['port'])
+                        
 
     def receive_msg(self):
 
@@ -330,11 +365,11 @@ class ServerNode:
 
 
 if __name__ == "__main__":
-    name = 'not_defined'
+    client_id = 'not_defined'
     if len(sys.argv)>1:
-        name = str(sys.argv[1])
+        client_id = str(sys.argv[1])
 
-    while name not in nodos.keys():
-        name = input("Provide server name (1-5): ")
+    while client_id not in nodos.keys():
+        client_id = input("Provide server id (1-5): ")
 
-    server_node = ServerNode(chr(ord(name)-ord('1')+ord('a')), nodos[name]['port'])
+    server_node = ServerNode(client_id, id_to_name(client_id), nodos[client_id]['port'])

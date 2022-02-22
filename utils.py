@@ -9,9 +9,8 @@ import pickle
 
 from settings import *
 
-def interface_receive_message(self, msg, conn):
+def interface_receive_message(self, msg):
     print('Recieved msg from interface')
-
     # Only the leader handles it
     if self._state == 'Leader':  # This process is called Log Replication
         # change goes to the leader
@@ -31,20 +30,12 @@ def interface_receive_message(self, msg, conn):
 
     # If a follower receives a message from a client the it must redirect to the leader
     else:
-        redirect_to_leader(self, msg, conn)
+        redirect_to_leader(self, msg)
 
-def redirect_to_leader(self, msg, conn):
+def redirect_to_leader(self, msg):
     next_node_port = (self.PORT - 5000)%(len(nodos)) + 5001
-    conn.sendall(pickle.dumps({'Not a leader': 'redirecting to port ' + str(next_node_port) }))
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
-        try:
-            # Connects to server destination
-            tcp.connect(('', next_node_port))
-            # Send message
-            tcp.sendall(pickle.dumps(msg))
-        except Exception as e:
-                    print(e)
-
+    send_message(pickle.dumps(msg), next_node_port)
+    
 def reply_append_entry(self, msg, conn):
     """
     An entry is committed once a majority of followers acknowledge it...
@@ -125,3 +116,6 @@ def send_message(msg, port):
             tcp.sendall(msg)
     except Exception as e:
         print(e)
+
+def id_to_name(client_id):
+    return chr(ord(client_id)-ord('1')+ord('a'))
