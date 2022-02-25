@@ -42,15 +42,18 @@ def save_new_key_pairs(client_id:str):
             publicKeyPkcs1PEM = pickle.dumps(public_key)
             file.write(publicKeyPkcs1PEM)
             file.close()
+    if not os.path.exists("keys"):
+        os.makedirs("keys")
     file_exists = os.path.exists("keys/" + 'private_key_'+client_id+'.pem') and os.path.exists("keys/" + 'public_key_'+client_id+'.pem')
     
     if file_exists:
         print("Keys already exists for"+client_id)
         return
 
-    publicKey, privateKey = rsa.newkeys(NODE_KEY_NBITS, poolsize=4, exponent=1) 
+    publicKey, privateKey = rsa.newkeys(NODE_KEY_NBITS) #, poolsize=4, exponent=1) 
     cwd = os.getcwd()
 
+    print('Exporting keys.')
     export_private_key(privateKey,   cwd+"/keys/" + 'private_key_'+client_id+'.pem')
     export_public_key(publicKey, cwd+"/keys/" + 'public_key_'+client_id+'.pem')
 
@@ -65,10 +68,10 @@ def fetch_key_pairs(client_id:str):
 
     public_key_string = open(cwd+"/keys/" + "public_key_"+client_id+".pem","rb").read()
     publicKeyReloaded = pickle.loads(public_key_string)
-
+    print('Public key: ', publicKeyReloaded)
     private_key_string = open(cwd+"/keys/" + "private_key_"+client_id+".pem","rb").read()
     privateKeyReloaded = pickle.loads(private_key_string)
-
+    print('Private Key: ', privateKeyReloaded)
     #Example for reference
     '''
     plaintext = "vinay kumar shukla".encode('utf-8')

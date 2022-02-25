@@ -3,22 +3,42 @@ import time
 import socket
 import signal
 import sys
+import pickle
 import json
 import my_exceptions
 import pickle
 
 from settings import *
 
+
+def create_append_msg(self, type, node):
+    logs = self.logs[self.next_index[node]:]
+    msg = {
+        'type': type,
+        'term': self._current_term,
+        'leader_id': self._name,
+        'leader_port': self.PORT,  # AppendEntries requests include the network address of the leader
+        'prev_log_index': self.next_index[node] - 1,
+        'prev_log_term': self.logs[self.next_index[node] - 1]['term'] if self.next_index[node] > 0 else None,
+        'change': logs,
+        'commit_index': self._commit_index
+    }
+    return pickle.dumps(msg)
+
 def interface_receive_message(self, msg):
-    print('Recieved msg from interface')
+    print('Recieved msg from client')
+
     # Only the leader handles it
     if self._state == 'Leader':  # This process is called Log Replication
         # change goes to the leader
 
         print('Leader append log: ', msg['change'])
-        self._log = (msg['change'])  # Each change is added as an entry in the nodes's log
-        print(self._log)
-        self._ack_log += 1
+        log = {
+            'term': self._current_term,
+            'data': msg['change']
+        }
+        self.logs.append(log)  # Each change is added as an entry in the nodes's log
+        self.ack_logs.append(0)
 
     # This log entry is currently uncommitted so it won't update the node's value.
 
@@ -35,28 +55,55 @@ def interface_receive_message(self, msg):
 def redirect_to_leader(self, msg):
     next_node_port = (self.PORT - 5000)%(len(nodos)) + 5001
     send_message(msg, next_node_port)
-    
+
 def reply_append_entry(self, msg, conn):
     """
     An entry is committed once a majority of followers acknowledge it...
     :param append_entry_msg:
     :return:
     """
-    # TODO: Acknowledge message
-    self._election_timeout = self.get_election_timeout()
-    self.config_timeout()
-    self._state = "Follower"
-    self._log = (msg['change'])
-
     ack_msg = {
-        'client_id': self._name,
         'term': self._current_term,
-        'type': 'ack_append_entry',
-        'change': self._log
+        'success': False,
+        'change': msg['change']
     }
+    if msg['term'] < self._current_term:
+        pass
+    else:
+        if msg['term'] > self._current_term:
+            self._current_term = msg['term']
+            self._voted_for = None
+            persist_state(self)
+        self._state = "Follower"
+        self._election_timeout = self.get_election_timeout()
+        self.config_timeout()
+        #  or \
+        # (msg['term'] == self._current_term and (not msg['prev_log_term']) or (len(self.logs) > msg['prev_log_index']) \
+        # and msg['prev_log_term'] == self.logs[msg['prev_log_index']]['term']):
+        print('Message: ', msg) if DEBUGGING_ON else None
+        if (not msg['prev_log_term'] or (msg['prev_log_index'] < len(self.logs) and \
+            msg['prev_log_term'] == self.logs[msg['prev_log_index']]['term'])):
 
+            # No reply, when no change (heartbeat message)
+            if not len(msg['change']):
+                self.commit(msg['commit_index'])
+                return
+            self.logs = self.logs[:msg['prev_log_index'] + 1]
+            self.ack_logs = self.ack_logs[:len(self.logs)]
+            self.logs.extend(msg['change'])
+            self.ack_logs.extend([0]*len(msg['change']))
+            ack_msg['success'] = True
+            self.commit(msg['commit_index'])
+
+            print('Append entry successful')
+            print('Log: ', self.logs)
+            
+    ##TODO: Append any new entries not already in the log
+    ##TODO: Forward state machine
     reply = pickle.dumps(ack_msg)
     conn.sendall(reply)
+
+
 # Remote procedure call
 def request_vote(self, node, value):
     '''
@@ -66,8 +113,8 @@ def request_vote(self, node, value):
         'type': 'req_vote',
         'term': self._current_term,
         'candidate_id': self._name,
-        'last_log_index': self._last_applied,
-        'last_log_term': self._commit_index
+        'last_log_index': len(self.logs) - 1,
+        'last_log_term': self.logs[-1]['term'] if self.logs else None
     }
     msg = pickle.dumps(msg)
 
@@ -119,3 +166,27 @@ def send_message(msg, port):
 
 def id_to_name(client_id):
     return chr(ord(client_id)-ord('1')+ord('a'))
+
+def persist_state(self):
+
+    data = {
+        '_current_term': self._current_term,   # Latest term server has seen
+        '_voted_for': self._voted_for
+    }
+
+    with open(self._name + '.state', 'w') as file:
+        json.dump(data, file)
+
+def load_state(self):
+    with open(self._name + '.state', 'r') as file:
+        data = json.load(file)
+        self._current_term = data['_current_term']
+        self._voted_for = data['_voted_for']
+    print('Configuration loaded: ', data)
+
+def load_logs(self):
+    with open(self._name + '.log', 'rb') as f:
+        self.logs = pickle.load(f)
+    self.ack_logs = [len(nodos)] * len(self.logs)
+    self._commit_index = len(self.logs) - 1
+    print('Logs loaded: ', self.logs)
