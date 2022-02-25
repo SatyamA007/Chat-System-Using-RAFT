@@ -83,7 +83,8 @@ class ServerNode:
         :return:
         """
         if msg['term'] > self._current_term \
-            or (msg['term'] == self._current_term and self._voted_for in [None, msg['candidate_id']]):
+            or (msg['term'] == self._current_term and self._voted_for in [None, msg['candidate_id']] \
+                and msg['last_log_index'] >= len(self.logs) - 1):
             ## TODO: Add condition for candidate log being atleast as complete as local log
 
             self._state = "Follower"  # Becomes follower again if term is outdated
@@ -193,7 +194,8 @@ class ServerNode:
                                     # self.acks_log += 1
                                     self.ack_logs[index] += 1
                                     #if heard back from majority
-                                    if self.ack_logs[index] == len(nodos)//2:
+                                    if self.ack_logs[index] == len(nodos)//2 \
+                                        and self._current_term == self.logs[index]['term']:
                                         self.commit(self.next_index[value['name']])
                                         # self.send_commit(self.next_index[value['name']])
                                 self.next_index[value['name']] += len(reply['change'])
