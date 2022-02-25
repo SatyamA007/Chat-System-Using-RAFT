@@ -1,14 +1,7 @@
 from utils import *
+from os.path import exists
 
 class ServerNode:
-
-    state = ['Follower', 'Candidate', 'Leader']
-
-    nodos = {
-        'node1': {'name': 'a', 'port': 5001},
-        'node2': {'name': 'b', 'port': 5002},
-        'node3': {'name': 'c', 'port': 5003},
-    }
 
     def __init__(self, node_id, node_port):
 
@@ -27,21 +20,34 @@ class ServerNode:
         # Persistent state on all servers
         self._current_term = 0   # Latest term server has seen
         self._voted_for = None   # Candidate id that received vote in current term
-        self._log = ''           # log entries; each entry contains command for state machine, and term when entry was received by leader
+        self.logs = []
+        self.ack_logs = []
+        self.next_index = None
 
         # Volatile state on all servers
-        self._commit_index = 0   # Index of highest log entry known to be committed
+        self._commit_index = -1   # Index of highest log entry known to be committed
         self._last_applied = 0   # Index of highest log entry applied to state machine
 
-        # Volatile state on leaders, for each server
-        self._next_index  = 0    # Index of the next log entry to send to that server, also known as last log index
-        self._match_index = 0    # Index of highest log entry known to be replicated on server, also known as last log term
+        # # Volatile state on leaders, for each server
+        # self._next_index  = 0    # Index of the next log entry to send to that server, also known as last log index
+        # self._match_index = 0    # Index of highest log entry known to be replicated on server, also known as last log term
 
-        self._to_commit = False
-
-        self._ack_log = 0
         self._leader = None
+        self.recover_state()
         self.start()
+
+    def recover_state(self):
+        if exists(self._name + '.state'):
+            load_configuration(self)
+            print('State recovered successfully.')
+
+        if exists(self._name + '.log'):
+            load_logs(self)
+        else:
+            # create log file if it doesn't exist
+            with open(self._name + '.log', 'w') as fp:
+                pass
+        
 
     def start(self):
 
@@ -76,7 +82,9 @@ class ServerNode:
         :param msg:
         :return:
         """
-        if msg['term'] > self._current_term:
+        if msg['term'] > self._current_term \
+            or (msg['term'] == self._current_term and self._voted_for in [None, msg['candidate_id']]):
+            ## TODO: Add condition for candidate log being atleast as complete as local log
 
             self._state = "Follower"  # Becomes follower again if term is outdated
             print('Follower')
@@ -84,45 +92,44 @@ class ServerNode:
             self._current_term = msg['term']
             self._voted_for = msg['candidate_id']
             reply_vote = {
-                'candidate_id': msg['candidate_id']
+                'term': msg['candidate_id'],
+                'voteGranted': True
             }
-            self._election_timeout = self.get_election_timeout()  # ...and the node resets its election timeout.
-            self.config_timeout()
-            return json.dumps(reply_vote)
+            persist_state(self)
+            # self._election_timeout = self.get_election_timeout()  # ...and the node resets its election timeout.
+            # self.config_timeout()
 
         else:
             reply_vote = {
-                'candidate_id': self._voted_for
+                'term': self._current_term,
+                'voteGranted': False
             }
-            return json.dumps(reply_vote)
+        return pickle.dumps(reply_vote)
 
-    def vote_in_candidate(self, candidate):
+    def execute_state_machine(self):
         pass
 
-    def commit(self):
-        commit_msg = str(self._log)
-        print(type(commit_msg))
-        print('Commiting msg: ', commit_msg)
-        with open(f'{self._name}.log', 'a') as log_file:
-            log_file.write(commit_msg + '\n')
+    def commit(self, latestIndex):
+        print('Entered commit function.')
+        print(self._commit_index, latestIndex)
+        for index in range(self._commit_index + 1, latestIndex + 1):
+            print(index)
+            commit_msg = json.dumps(self.logs[index])
+            print(type(commit_msg))
+            print('Commiting msg: ', commit_msg)
+            with open(f'{self._name}.log', 'a') as log_file:
+                log_file.write(commit_msg + '\n')
+                # log_file.write('\n')
+            self.execute_state_machine()
+        self._commit_index = latestIndex
+        print('Commited entries: ', self.logs)
 
-    def send_commit(self):
-        commit_msg = str(self._log)
+    def send_commit(self, index):
         for node, value in nodos.items():
             if value['name'] != self._name:
                 try:
                     print(f'Leader trying to commit {node}: {value["name"]}')
-                    msg = {
-                        'type': 'commit',
-                        'term': self._current_term,
-                        'leader_id': self._name,
-                        'leader_port': self.PORT,  # AppendEntries requests include the network address of the leader
-                        'prev_log_index': self._last_applied,
-                        'prev_log_term': self._commit_index,
-                        'leader_commit': self._to_commit,
-                        'change': commit_msg
-                    }
-                    msg = json.dumps(msg)
+                    msg = create_commit_msg(self, index)
 
                     send_message(msg, value['port'])
 
@@ -132,6 +139,14 @@ class ServerNode:
     def notify_followers(self):
         pass
 
+    def config_leader(self):
+        # Refreshes heartbeat
+        self._heartbeat_timeout = self.get_hearbeat_timeout()
+        self.next_index = {}
+        for val in nodos.values():
+            if val['name'] != self._name:
+                self.next_index[val['name']] = len(self.logs)
+
     # Remote procedure call
     def append_entries(self):
         """
@@ -140,25 +155,14 @@ class ServerNode:
 
         :return:
         """
-        # Refreshes heartbeat
-        self._heartbeat_timeout = self.get_hearbeat_timeout()
         self.config_timeout()
-
+        
         for node, value in nodos.items():
             if value['name'] != self._name:
                 try:
                     print(f'Leader trying to append entry for {node}: {value["name"]}')
-                    msg = {
-                        'type': 'apn_en',
-                        'term': self._current_term,
-                        'leader_id': self._name,
-                        'leader_port': self.PORT,  # AppendEntries requests include the network address of the leader
-                        'prev_log_index': self._last_applied,
-                        'prev_log_term': self._commit_index,
-                        'leader_commit': self._to_commit,
-                        'change': self._log
-                    }
-                    msg = json.dumps(msg)
+                    
+                    msg = create_append_msg(self, 'apn_en', value['name'])
 
                     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
 
@@ -168,28 +172,40 @@ class ServerNode:
                         print(f'Send app entry to node {node}: {value["name"]}')
 
                         # Send message
-                        tcp.sendall(msg.encode('utf-8'))
+                        tcp.sendall(msg)
 
                         # Receives data from the server
-                        reply = tcp.recv(1024).decode('utf-8')
-                        reply = json.loads(reply)
+                        reply = tcp.recv(1024)
+                        print('Reply from node: ',reply)
+                        if reply:
+                            reply = pickle.loads(reply)
 
-                        print('Append reply: ', reply)
+                            print('Append reply: ', reply)
 
-                        if len(reply['change']) > 0:
-                            ack_change = reply['change']
-                            print('Recieved change: ', ack_change)
-                            print('Log:', self._log)
+                            if reply['success']:
+                                # ack_change = reply['change']
+                                # print('Recieved change: ', ack_change)
+                                # print(self.next_index)
+                                # print(value)
+                                print('Log:', self.logs)
 
-                            if ack_change == self._log:
-                                self._ack_log += 1
-                                #if heard back from majority
-                                if self._ack_log > 2:
-                                    self.commit()
-                                    self.send_commit()
-                                    self._ack_log = 0
-                                    self._log = ''
-
+                                # if ack_change == self._log:
+                                for i in range(len(reply['change'])):
+                                    index = self.next_index[value['name']] + i
+                                    # self.acks_log += 1
+                                    self.ack_logs[index] += 1
+                                    #if heard back from majority
+                                    if self.ack_logs[index] == len(nodos)//2:
+                                        self.commit(self.next_index[value['name']])
+                                        # self.send_commit(self.next_index[value['name']])
+                                self.next_index[value['name']] += len(reply['change'])
+                            else:
+                                if reply['term'] > self._current_term:
+                                    self._current_term = reply['term']
+                                    self._state = 'Follower'
+                                    self.config_timeout()
+                                    return
+                                self.next_index[value['name']] -= 1
                 except Exception as e:
                     print(e)
 
@@ -206,6 +222,7 @@ class ServerNode:
         print('Current term:',  self._current_term)
         self._voted_for = self._name
         self._votes_in_term = 1
+        persist_state(self)
 
         # for all nodes in cluster
         for node, value in nodos.items():
@@ -213,21 +230,26 @@ class ServerNode:
             if value['name'] != self._name:
                 print(f'Trying to connect {node}: {value["name"]}')
                 reply = request_vote(self, node, value)
-                
-                if not reply:
-                    break
+                print('Request vote reply:', reply)
+                # if not reply:
+                #     break
 
-                for key, value in reply.items():
-
-                    if value == self._name:
-                        self._votes_in_term += 1
-                        print('Votes in term', self._votes_in_term)
+                if reply.get('voteGranted', None):
+                    self._votes_in_term += 1
+                    print('Votes in term', self._votes_in_term)
 
                     # Once a candidate has a majority of votes it becomes leader.
-                    if self._votes_in_term > 2:
+                    if self._votes_in_term > len(nodos)//2:
                         self._state = 'Leader'
                         print(f'Node {self._name} becomes {self._state}')
+                        self.config_leader()
                         self.append_entries()
+                        return
+                elif reply.get('term', None) and reply['term'] > self._current_term:
+                    self._current_term = reply['term']
+                    self._state = 'Follower'
+                    self.config_timeout()
+                    return
 
     def conn_loop(self, conn, address):
         with conn:
@@ -242,8 +264,9 @@ class ServerNode:
                 conn.close()
                 return
 
-            msg = msg.decode('utf-8')
-            msg = json.loads(msg)
+            print('Message received: ', msg)
+            # msg = msg.decode('utf-8')
+            msg = pickle.loads(msg)
 
             # Prints the received data
             print('Msg recieved: ', msg)
@@ -259,14 +282,13 @@ class ServerNode:
             elif msg['type'] == 'apn_en':
                 reply_append_entry(self, msg, conn)                
 
-            elif msg['type'] == 'commit':
-                self.commit()
-                self._log = ''
+            # elif msg['type'] == 'commit':
+            #     self.commit()
 
             elif msg['type'] == 'req_vote':               
                 reply_msg = self.reply_vote(msg)
                 print(f'Replying to {msg["candidate_id"]}')
-                conn.sendall(reply_msg.encode('utf-8'))
+                conn.sendall(reply_msg)
 
     def receive_msg(self):
 
