@@ -125,7 +125,6 @@ class ServerNode:
             #     log_file.write('\n')
         with open(f'{self._name}.log', 'wb') as log_file:
             pickle.dump(self.logs[:latestIndex + 1], log_file)
-            
         self._commit_index = latestIndex
 
     def notify_followers(self):
