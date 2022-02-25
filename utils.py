@@ -195,5 +195,5 @@ def load_logs(self):
         for line in f:
             self.logs.append(json.loads(line))
     self.ack_logs = [len(nodos)] * len(self.logs)
-    self._commit_index = len(self.logs)
+    self._commit_index = len(self.logs) - 1
     print('Logs loaded: ', self.logs)

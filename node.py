@@ -110,10 +110,8 @@ class ServerNode:
         pass
 
     def commit(self, latestIndex):
-        print('Entered commit function.')
-        print(self._commit_index, latestIndex)
+        print(list(range(self._commit_index + 1, latestIndex + 1)))
         for index in range(self._commit_index + 1, latestIndex + 1):
-            print(index)
             commit_msg = json.dumps(self.logs[index])
             print(type(commit_msg))
             print('Commiting msg: ', commit_msg)
