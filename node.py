@@ -178,7 +178,8 @@ class ServerNode:
                                     index = self.next_index[value['name']] + i
                                     self.ack_logs[index] += 1
                                     #if heard back from majority
-                                    if self.ack_logs[index] == len(nodos)//2:
+                                    if self.ack_logs[index] == len(nodos)//2 \
+                                        and self._current_term == self.logs[index]['term']:
                                         self.commit(self.next_index[value['name']])
                                 self.next_index[value['name']] += len(reply['change'])
 
