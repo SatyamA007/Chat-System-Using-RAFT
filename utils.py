@@ -1,3 +1,4 @@
+from copy import deepcopy
 import random
 import time
 import socket
@@ -30,13 +31,15 @@ def interface_receive_message(self, msg):
 
     # Only the leader handles it
     if self._state == 'Leader':  # This process is called Log Replication
-        # change goes to the leader
+        msg_to_send = dict(msg['change'])
+        msg_to_send.pop('group_public_key', None)
+        msg_to_send.pop('private_key_encrypted', None)
 
+        send_message(msg_to_send, interface['port'])
+        # change goes to the leader
         print('Leader append log: ', msg['change'])
-        log = {
-            'term': self._current_term,
-            'data': msg['change']
-        }
+        log = {'term': self._current_term}
+        log.update(msg['change'])
         self.logs.append(log)  # Each change is added as an entry in the nodes's log
         self.ack_logs.append(0)
 
@@ -98,8 +101,6 @@ def reply_append_entry(self, msg, conn):
             print('Append entry successful')
             print('Log: ', self.logs)
             
-    ##TODO: Append any new entries not already in the log
-    ##TODO: Forward state machine
     reply = pickle.dumps(ack_msg)
     conn.sendall(reply)
 
@@ -185,8 +186,17 @@ def load_state(self):
     print('Configuration loaded: ', data)
 
 def load_logs(self):
-    with open(self._name + '.log', 'rb') as f:
-        self.logs = pickle.load(f)
-    self.ack_logs = [len(nodos)] * len(self.logs)
-    self._commit_index = len(self.logs) - 1
-    print('Logs loaded: ', self.logs)
+    try:
+        with open(self._name + '.log', 'rb') as f:
+            self.logs = pickle.load(f)
+        self.ack_logs = [len(nodos)] * len(self.logs)
+        self._commit_index = len(self.logs) - 1
+        print('Logs loaded: ', self.logs) if DEBUGGING_ON else None
+    except EOFError:
+        self.logs = list() 
+
+def log_with_gid(self, gid):
+    for log in reversed(self.logs):
+        if log['group_id'] == gid:
+            return deepcopy(log)
+

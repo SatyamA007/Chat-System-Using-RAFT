@@ -15,37 +15,6 @@ class Client:
         signal.signal(signal.SIGALRM, self.get_command)
         self.config_timeout()
         self.start_server()
-
-    def send_change(self):
-        # Create a tcp socket
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
-
-            port = int(input("Leader's port:"))
-
-            # Receive message to be sent
-            msg_value = input("Enter the message to be sent:")
-
-            # connects no server
-            tcp.connect(('', port))
-
-            msg = {
-                'type': 'client',
-                'change': msg_value
-            }
-            msg = pickle.dumps(msg)
-
-            # Sends messge
-            tcp.sendall(msg)
-            msg = tcp.recv(4098)
-            if not msg:
-                print('Nothing recieved')
-                tcp.close()
-                return
-
-            msg = pickle.loads(msg)
-
-            # Print received data
-            print('Msg recieved: ', msg)
             
     def start_server(self):
 
@@ -78,7 +47,7 @@ class Client:
                         msg = pickle.loads(msg)
 
                         # Print received data
-                        print('Msg recieved: ', msg)
+                        print('Message received: ', msg)
 
                 except Exception:
                     self.get_command()
@@ -97,7 +66,9 @@ class Client:
                 break
 
     def check_invalid_command(self, client:str):
-        command = input('''Please issue a command from the following: \n1. createGroup <group id> <candidate_id>(s)\n2. add <group id> <client id>\n3. kick <group id> <client id>\n4. writeMessage <group id> <message>\n5. printGroup <group id>\n6. failLink <src> <dest>\n''')
+        command = input('''Please issue a command from the following: \n1. createGroup <group id> <candidate_id>(s)\n\
+2. add <group id> <client id>\n3. kick <group id> <client id>\n4. writeMessage <group id> <message>\n\
+5. printGroup <group id>\n6. failLink <src> <dest>\n7. fixLink <src> <dest>\n8. failProcess\n''')
         command = command.strip().split(' ')
         command[0] = command[0].lower()
 
@@ -105,7 +76,8 @@ class Client:
             client_ids = [client] 
             if len(command)>2: 
                 client_ids.extend(command[2:])
-            msg = {'type': 'create_group', 'group_id': command[1], 'client_ids':list(set(client_ids))}   
+            msg = {'type': 'create_group', 'group_id': command[1], 'client_ids':list(set(client_ids))}
+            print(msg)   
             
         elif command[0] =="add" and len(command)==3 and command[2] in nodos.keys():
             msg = { 'type': 'add2group', 'group_id': command[1], 'node': command[2] }
@@ -125,8 +97,8 @@ class Client:
         elif command[0] =="fixlink" and len(command)==3 and command[1] in nodos.keys() and command[2] in nodos.keys():
             msg = { 'type': 'fix_link', 'src': command[1], 'dst': command[2] }
 
-        elif command[0] =="failprocess" and len(command)==2 and command[1] in nodos.keys():
-            msg = { 'type': 'fail_process', 'node': command[1] }
+        elif command[0] =="failprocess":
+            msg = { 'type': 'fail_process'}
 
         else:
             return True
