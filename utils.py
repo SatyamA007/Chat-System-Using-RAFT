@@ -185,7 +185,8 @@ def request_vote(self, node, value):
     return {'candidate_id':'error'}
 
 def send_message(msg, sender_port, port):
-    msg.update({'from': sender_port})
+    if sender_port!=333:
+        msg.update({'from': sender_port})
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
             # Connects to server destination

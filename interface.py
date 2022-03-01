@@ -85,7 +85,7 @@ class Client:
         elif command[0] =="kick" and len(command)==3 and command[2] in nodos.keys():
             msg = { 'type': 'kick', 'group_id': command[1], 'node': command[2], 'from': interface['port'] }
             
-        elif command[0] =="writemessage"and len(command)>=3:
+        elif command[0] =="writemessage" and len(command)>=3:
             msg = { 'type': 'write_message', 'group_id': command[1], 'message': " ".join(command[2:]), 'from': interface['port'] }
             
         elif command[0] =="printgroup" and len(command)==2:
@@ -107,6 +107,7 @@ class Client:
             msg = { 'type': 'fail_process', 'from': interface['port']}
 
         else:
+            print(len(command), command)
             return True
         
         attempt = 0

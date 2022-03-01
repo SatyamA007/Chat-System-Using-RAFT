@@ -259,13 +259,13 @@ class ServerNode:
 
             msg = pickle.loads(msg)
             # Prints the received data
-            print('Msg received: ', msg)  #if DEBUGGING_ON else None 
+            print('Msg received: ', msg)  if DEBUGGING_ON else None 
             
             signal.alarm(0)
             
             if msg['from'] in self._broken_links:
-                conn.sendall(pickle.dumps(""))
                 print(f"Message blocked - link {nodos[self._id]['port']} and {msg['from']} broken")
+                conn.close()
 
             elif msg['type'] == 'ping' :
                 if msg['from'] not in self._broken_links:
@@ -297,8 +297,7 @@ class ServerNode:
                         'client_ids': msg['client_ids'],
                         'group_public_key': publicKey_group,
                         'private_key_encrypted': [encrypt_group_key(x, privateKey_group) for x in msg['client_ids']]
-                    },
-                    'from': nodos[self._id]['port']
+                    }
                 }
                 replicate_logEntry(self, log_entry)
             elif msg['type'] == 'add2group':
@@ -328,11 +327,11 @@ class ServerNode:
                     replicate_logEntry(self, log_entry)
                 else:
                     if not log_for_g_id:
-                        send_message({'Error adding memeber':'Group with ID = '+msg['group_id']+' does not exist!', 'Commit Status':'Aborted'}, interface['port'])
+                        send_message({'Error adding memeber':'Group with ID = '+msg['group_id']+' does not exist!', 'Commit Status':'Aborted'}, nodos[self._id]['port'], interface['port'])
                     elif msg['node'] in log_for_g_id['client_ids']:
-                        send_message({'Error adding memeber':'Client '+ msg['node']+' already a member of '+msg['group_id'], 'Commit Status':'Aborted'}, interface['port'])
+                        send_message({'Error adding memeber':'Client '+ msg['node']+' already a member of '+msg['group_id'], 'Commit Status':'Aborted'},  nodos[self._id]['port'], interface['port'])
                     else:
-                        send_message({'Error adding memeber':'Client in-charge not a member of '+msg['group_id'], 'Commit Status':'Aborted'}, interface['port'])
+                        send_message({'Error adding memeber':'Client in-charge not a member of '+msg['group_id'], 'Commit Status':'Aborted'}, nodos[self._id]['port'], interface['port'])
             
             elif msg['type'] == 'kick':
                 #find the group, return latest entry if it exists
@@ -359,11 +358,11 @@ class ServerNode:
                     replicate_logEntry(self, log_entry)
                 else:
                     if not log_for_g_id:
-                        send_message({'Error kicking memeber':'Group with ID = '+msg['group_id']+' does not exist!', 'Commit Status':'Aborted'}, interface['port'])
+                        send_message({'Error kicking memeber':'Group with ID = '+msg['group_id']+' does not exist!', 'Commit Status':'Aborted'}, nodos[self._id]['port'], interface['port'])
                     elif msg['node'] not in log_for_g_id['client_ids']:
-                        send_message({'Error kicking memeber':'Client '+ msg['node']+' not a member of '+msg['group_id'], 'Commit Status':'Aborted'}, interface['port'])
+                        send_message({'Error kicking memeber':'Client '+ msg['node']+' not a member of '+msg['group_id'], 'Commit Status':'Aborted'}, nodos[self._id]['port'], interface['port'])
                     else:
-                        send_message({'Error kicking memeber':'Client in-charge not a member of '+msg['group_id'], 'Commit Status':'Aborted'}, interface['port'])
+                        send_message({'Error kicking memeber':'Client in-charge not a member of '+msg['group_id'], 'Commit Status':'Aborted'}, nodos[self._id]['port'], interface['port'])
             
             elif msg['type']=='write_message':
                 #find the group, return latest entry if it exists
@@ -386,7 +385,7 @@ class ServerNode:
                     }
                     replicate_logEntry(self, log_entry)
                 else:
-                    send_message({'Error writing to group': 'Group with id = '+msg['group_id']+' does not exist!', 'Commit Status':'Aborted'}, interface['port'])
+                    send_message({'Error writing to group': 'Group with id = '+msg['group_id']+' does not exist!', 'Commit Status':'Aborted'}, nodos[self._id]['port'], interface['port'])
             
             elif msg['type'] == 'print_group':
                                 
@@ -400,27 +399,27 @@ class ServerNode:
                         messages_with_gid+= "\n"+ json.dumps({'message': decrypted_message,'sender': log['sender'], 'clients':log['client_ids']})
                 #Even if the response seems empty, the group may still have messages from external senders, 
                 # or this client might be that external sender but does not have the private key for decryption
-                send_message(messages_with_gid, interface['port']) if messages_with_gid else send_message("Empty response: Given client "+self._id+" cannot decypher messages for group "+msg['group_id']+" OR no such group exists.", interface['port'])
+                send_message(f"{len(messages_with_gid)} messages found"+messages_with_gid, 333, interface["port"]) if messages_with_gid else send_message("Empty response: Given client "+self._id+" cannot decypher messages for group "+msg["group_id"]+" OR no such group exists.", 333, interface["port"])
             
             elif msg['type'] == 'fail_link':
                 self._broken_links.append(nodos[msg['dst']]['port'])
                 if msg['src'] != 'done':
-                    next_dst = msg['src']
+                    next_node = msg['dst']
                     msg['src'] = 'done'
                     msg['dst'] = self._id
-                    send_message(msg, 123, nodos[next_dst] ['port']) 
+                    send_message(msg, 123, nodos[next_node] ['port']) 
                 
             elif msg['type'] == 'fix_link':
                 self._broken_links = list(filter(lambda x: x != nodos[msg['dst']]['port'],self._broken_links))
                 if msg['src'] != 'done':
-                    next_dst = msg['src']
+                    next_node = msg['dst']
                     msg['src'] = 'done'
                     msg['dst'] = self._id
-                    send_message(msg , 123, nodos[next_dst]['port']) 
+                    send_message(msg , 123, nodos[next_node]['port']) 
 
             elif msg['type'] == 'fail_process':
                 #TODO: Utilize for updating states before failing
-                send_message(f"Process {self._id} failed with code 0.", interface['port']) 
+                send_message(f"Process {self._id} failed with code 0.", nodos[self._id]['port'], interface['port']) 
                 quit()            
             
             self.config_timeout()            
