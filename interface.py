@@ -2,10 +2,11 @@ import json
 import pickle
 import signal
 import socket
+import time
 
 
 from settings import *
-from utils import send_message
+from utils import send_message, send_ping
 
 class Client:
 
@@ -76,35 +77,51 @@ class Client:
             client_ids = [client] 
             if len(command)>2: 
                 client_ids.extend(command[2:])
-            msg = {'type': 'create_group', 'group_id': command[1], 'client_ids':list(set(client_ids))}
-            print(msg)   
+            msg = {'type': 'create_group', 'group_id': command[1], 'client_ids':list(set(client_ids)), 'from': interface['port']}
             
         elif command[0] =="add" and len(command)==3 and command[2] in nodos.keys():
-            msg = { 'type': 'add2group', 'group_id': command[1], 'node': command[2] }
+            msg = { 'type': 'add2group', 'group_id': command[1], 'node': command[2], 'from': interface['port']}
 
         elif command[0] =="kick" and len(command)==3 and command[2] in nodos.keys():
-            msg = { 'type': 'kick', 'group_id': command[1], 'node': command[2] }
+            msg = { 'type': 'kick', 'group_id': command[1], 'node': command[2], 'from': interface['port'] }
             
-        elif command[0] =="writemessage"and len(command)==3:
-            msg = { 'type': 'write_message', 'group_id': command[1], 'message': command[2] }
+        elif command[0] =="writemessage"and len(command)>=3:
+            msg = { 'type': 'write_message', 'group_id': command[1], 'message': " ".join(command[2:]), 'from': interface['port'] }
             
         elif command[0] =="printgroup" and len(command)==2:
-            msg = { 'type': 'print_group', 'group_id': command[1] }
+            msg = { 'type': 'print_group', 'group_id': command[1], 'from': interface['port'] }
             
         elif command[0] =="faillink" and len(command)==3 and command[1] in nodos.keys() and command[2] in nodos.keys():
-            msg = { 'type': 'fail_link', 'src': command[1], 'dst': command[2] }
+            if command[1]!= client:
+                print("Error: <src> must be equal to the receiving client")
+                return True
+            msg = { 'type': 'fail_link', 'src': command[1], 'dst': command[2], 'from': interface['port'] }
 
         elif command[0] =="fixlink" and len(command)==3 and command[1] in nodos.keys() and command[2] in nodos.keys():
-            msg = { 'type': 'fix_link', 'src': command[1], 'dst': command[2] }
+            if command[1]!= client:
+                print("Error: <src> must be equal to the receiving client")
+                return True
+            msg = { 'type': 'fix_link', 'src': command[1], 'dst': command[2], 'from': interface['port'] }
 
         elif command[0] =="failprocess":
-            msg = { 'type': 'fail_process'}
+            msg = { 'type': 'fail_process', 'from': interface['port']}
 
         else:
             return True
-
-        send_message(msg, nodos[client]['port'])
-        return False  
+        
+        attempt = 0
+        while( attempt< MAX_RETRIES):
+            ping = send_ping(interface['port'], nodos[client]['port'])
+            if ping:
+                print(f"Ping succesful, client alive")
+                send_message(msg, interface['port'], nodos[client]['port'])
+                return False  
+            print(f"Request {attempt+1} timeout....retrying")
+            time.sleep(1)
+            attempt+=1
+        
+        print(f"Request failed....Client not connected!!")
+            
 
 if __name__== "__main__":
     interface = Client(interface['port'])

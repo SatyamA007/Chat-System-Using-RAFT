@@ -22,20 +22,21 @@ def create_append_msg(self, type, node):
         'prev_log_index': self.next_index[node] - 1,
         'prev_log_term': self.logs[self.next_index[node] - 1]['term'] if self.next_index[node] > 0 else None,
         'change': logs,
-        'commit_index': self._commit_index
+        'commit_index': self._commit_index,
+        'from': nodos[self._id]['port']
     }
     return pickle.dumps(msg)
 
-def interface_receive_message(self, msg):
+def replicate_logEntry(self, msg):
     print('Recieved msg from client')
-
+    msg.update({'from':nodos[self._id]['port']})
     # Only the leader handles it
     if self._state == 'Leader':  # This process is called Log Replication
         msg_to_send = dict(msg['change'])
         msg_to_send.pop('group_public_key', None)
         msg_to_send.pop('private_key_encrypted', None)
 
-        send_message(msg_to_send, interface['port'])
+        send_message(msg_to_send, nodos[self._id]['port'], interface['port'])
         # change goes to the leader
         print('Leader append log: ', msg['change'])
         log = {'term': self._current_term}
@@ -53,11 +54,38 @@ def interface_receive_message(self, msg):
 
     # If a follower receives a message from a client the it must redirect to the leader
     else:
-        redirect_to_leader(self, msg)
+        port_forward(self, msg)
 
-def redirect_to_leader(self, msg):
-    next_node_port = (self.PORT - 5000)%(len(nodos)) + 5001
-    send_message(msg, next_node_port)
+def port_forward(self, msg):
+    next_node_id = (int(self._id))%(len(nodos)) + 1 
+    while(str(next_node_id)!= self._id):
+        next_port = nodos[str(next_node_id)]['port']
+
+        ping = send_ping( nodos[self._id]['port'], next_port)
+
+        if ping and next_port not in self._broken_links:
+            send_message(msg, nodos[self._id]['port'], nodos[str(next_node_id)]['port'])
+            return
+        next_node_id = (next_node_id)%(len(nodos)) + 1
+
+def send_ping(sender_port, port):
+
+    try:            
+        ping = pickle.dumps({'type':'ping', 'from':sender_port })
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
+
+            tcp.connect(('', port))
+
+            print(f'Sending ping to Port: {port}')
+            tcp.sendall(ping)
+            reply = tcp.recv(4098)
+            if reply:
+                tcp.close()
+                return True
+    except Exception as e:
+        print(e,'send_ping')
+    return False
+
 
 def reply_append_entry(self, msg, conn):
     """
@@ -115,7 +143,8 @@ def request_vote(self, node, value):
         'term': self._current_term,
         'candidate_id': self._name,
         'last_log_index': len(self.logs) - 1,
-        'last_log_term': self.logs[-1]['term'] if self.logs else None
+        'last_log_term': self.logs[-1]['term'] if self.logs else None,
+        'from':nodos[self._id]['port']
     }
     msg = pickle.dumps(msg)
 
@@ -148,22 +177,24 @@ def request_vote(self, node, value):
 
     except Exception as e:
         tcp.close()
-        print(e)
+        print(e,'request_vote')
 
     except KeyboardInterrupt:
         raise SystemExit()
     tcp.close()
     return {'candidate_id':'error'}
 
-def send_message(msg, port):
+def send_message(msg, sender_port, port):
+    msg.update({'from': sender_port})
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
             # Connects to server destination
             tcp.connect(('', port))
             # Send message
             tcp.sendall(pickle.dumps(msg))
+            tcp.close()
     except Exception as e:
-        print(e)
+        print(e,'send_message')
 
 def id_to_name(client_id):
     return chr(ord(client_id)-ord('1')+ord('a'))

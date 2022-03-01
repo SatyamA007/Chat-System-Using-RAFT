@@ -4,15 +4,17 @@ nodos = {
     '1': {'name': 'a', 'port': 5001},
     '2': {'name': 'b', 'port': 5002},
     '3': {'name': 'c', 'port': 5003},
+    '4': {'name': 'd', 'port': 5004},
+    '5': {'name': 'e', 'port': 5005},
 }
 
-interface = {'port': 5004}
+interface = {'port': 7004}
 
 heartbeatInterval = 2
 DEBUGGING_ON = False
 GROUP_KEY_NBITS = 256 # for 21 byte messages
 NODE_KEY_NBITS = 2048
-
+MAX_RETRIES = 5
 
 '''
 Sample log entries
