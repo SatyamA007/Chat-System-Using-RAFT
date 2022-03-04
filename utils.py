@@ -13,7 +13,7 @@ from settings import *
 
 
 def create_append_msg(self, type, node):
-    logs = self.logs[self.next_index[node]:]
+    logs = self.logs[self.next_index[node]: self.next_index[node] + 4] # sending blocks of 4 entries
     msg = {
         'type': type,
         'term': self._current_term,
@@ -124,7 +124,7 @@ def reply_append_entry(self, msg, conn):
             self.logs.extend(msg['change'])
             self.ack_logs.extend([0]*len(msg['change']))
             ack_msg['success'] = True
-            self.commit(msg['commit_index'])
+            self.commit(self._commit_index + len(msg['change']))
 
             print('Append entry successful')
             print('Log: ', self.logs)
