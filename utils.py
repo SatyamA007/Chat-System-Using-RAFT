@@ -204,7 +204,8 @@ def persist_state(self):
 
     data = {
         '_current_term': self._current_term,   # Latest term server has seen
-        '_voted_for': self._voted_for
+        '_voted_for': self._voted_for,
+        '_broken_links': self._broken_links
     }
 
     with open(self._name + '.state', 'w') as file:
@@ -215,6 +216,7 @@ def load_state(self):
         data = json.load(file)
         self._current_term = data['_current_term']
         self._voted_for = data['_voted_for']
+        self._broken_links = data['_broken_links']
     print('Configuration loaded: ', data)
 
 def load_logs(self):

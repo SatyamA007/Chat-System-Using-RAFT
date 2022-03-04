@@ -403,6 +403,7 @@ class ServerNode:
             
             elif msg['type'] == 'fail_link':
                 self._broken_links.append(nodos[msg['dst']]['port'])
+                persist_state(self)
                 if msg['src'] != 'done':
                     next_node = msg['dst']
                     msg['src'] = 'done'
@@ -411,6 +412,7 @@ class ServerNode:
                 
             elif msg['type'] == 'fix_link':
                 self._broken_links = list(filter(lambda x: x != nodos[msg['dst']]['port'],self._broken_links))
+                persist_state(self)
                 if msg['src'] != 'done':
                     next_node = msg['dst']
                     msg['src'] = 'done'
