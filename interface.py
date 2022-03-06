@@ -69,7 +69,7 @@ class Client:
     def check_invalid_command(self, client:str):
         command = input('''Please issue a command from the following: \n1. createGroup <group id> <candidate_id>(s)\n\
 2. add <group id> <client id>\n3. kick <group id> <client id>\n4. writeMessage <group id> <message>\n\
-5. printGroup <group id>\n6. failLink <src> <dest>\n7. fixLink <src> <dest>\n8. failProcess\n''')
+5. printGroup <group id>\n6. failLink <src> <dest>(s)\n7. fixLink <src> <dest>(s)\n8. failProcess\n''')
         command = command.strip().split(' ')
         command[0] = command[0].lower()
 
@@ -91,23 +91,22 @@ class Client:
         elif command[0] =="printgroup" and len(command)==2:
             msg = { 'type': 'print_group', 'group_id': command[1], 'from': interface['port'] }
             
-        elif command[0] =="faillink" and len(command)==3 and command[1] in nodos.keys() and command[2] in nodos.keys():
+        elif command[0] =="faillink" and len(command)>=3 and command[1] in nodos.keys() and set(command[2:]) <= set(nodos.keys()):
             if command[1]!= client:
                 print("Error: <src> must be equal to the receiving client")
                 return True
-            msg = { 'type': 'fail_link', 'src': command[1], 'dst': command[2], 'from': interface['port'] }
+            msg = { 'type': 'fail_link', 'src': command[1], 'dst': command[2:], 'from': interface['port'] }
 
-        elif command[0] =="fixlink" and len(command)==3 and command[1] in nodos.keys() and command[2] in nodos.keys():
+        elif command[0] =="fixlink" and len(command)>=3 and command[1] in nodos.keys() and set(command[2:]) <= set(nodos.keys()):
             if command[1]!= client:
                 print("Error: <src> must be equal to the receiving client")
                 return True
-            msg = { 'type': 'fix_link', 'src': command[1], 'dst': command[2], 'from': interface['port'] }
+            msg = { 'type': 'fix_link', 'src': command[1], 'dst': command[2:], 'from': interface['port'] }
 
         elif command[0] =="failprocess":
             msg = { 'type': 'fail_process', 'from': interface['port']}
 
         else:
-            print(len(command), command)
             return True
         
         attempt = 0

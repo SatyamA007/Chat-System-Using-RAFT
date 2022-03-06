@@ -67,6 +67,8 @@ def port_forward(self, msg):
             send_message(msg, nodos[self._id]['port'], nodos[str(next_node_id)]['port'])
             return
         next_node_id = (next_node_id)%(len(nodos)) + 1
+    
+    send_message({'Command':msg['change']['type']+" "+msg['change']['group_id'], 'Status':'Command failed! Not enough servers up for commiting the log.'}, 123, interface['port'])
 
 def send_ping(sender_port, port):
 
@@ -127,7 +129,7 @@ def reply_append_entry(self, msg, conn):
             self.commit(self._commit_index + len(msg['change']))
 
             print('Append entry successful')
-            print('Log: ', self.logs)
+            print('Log: ', self.logs) if DEBUGGING_ON else None
             
     reply = pickle.dumps(ack_msg)
     conn.sendall(reply)
@@ -147,7 +149,7 @@ def request_vote(self, node, value):
         'from':nodos[self._id]['port']
     }
     msg = pickle.dumps(msg)
-
+    error = ""
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
 
@@ -165,27 +167,28 @@ def request_vote(self, node, value):
             reply = tcp.recv(4098)
 
             if not reply:
-                print("Reply not recieved")
+                print("Reply not received")
                 return reply
 
             reply = pickle.loads(reply)
             return reply
-
     except TimeoutError as te:
         print(te.args[0])
+        error = te.args[0]
         tcp.close()
 
     except Exception as e:
         tcp.close()
+        error = e
         print(e,'request_vote')
 
     except KeyboardInterrupt:
         raise SystemExit()
     tcp.close()
-    return {'candidate_id':'error'}
+    return {'candidate_id':error}
 
 def send_message(msg, sender_port, port):
-    if sender_port!=333:
+    if port!=interface['port']:
         msg.update({'from': sender_port})
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:

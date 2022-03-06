@@ -20,6 +20,7 @@ class ServerNode:
         self._address = None
 
         # The election timeout is the amount of time a follower waits until becoming a candidate.
+        self._failed_elections = 0
         self._election_timeout = self.get_election_timeout()  # Sets node election timeout
         self._votes_in_term = 0      # Votes received by the candidate in a given election term
         self._heartbeat_timeout = self.get_hearbeat_timeout()  # Must be less then election timeout
@@ -67,9 +68,10 @@ class ServerNode:
     def config_timeout(self):
 
         if self._state in ['Follower', 'Candidate']:
-            print(f'Configured follower node {self._name} with election timeout to: {self._election_timeout}')  if DEBUGGING_ON else None
+            el_t_o = self.get_election_timeout()
+            print(f'Configured follower node {self._name} with election timeout to: {el_t_o}')  #if DEBUGGING_ON else None
             signal.signal(signal.SIGALRM, self.election_timeout_handler)
-            signal.alarm(self._election_timeout)
+            signal.alarm(el_t_o)
 
         elif self._state == 'Leader':
             print(f'Configured candidate node {self._name} with heartbeat timeout to: {self._heartbeat_timeout}')  if DEBUGGING_ON else None
@@ -100,7 +102,7 @@ class ServerNode:
             self._current_term = msg['term']
             self._voted_for = msg['candidate_id']
             reply_vote = {
-                'term': msg['candidate_id'],
+                'term': msg['term'],
                 'voteGranted': True
             }
             persist_state(self)
@@ -136,6 +138,7 @@ class ServerNode:
         # Refreshes heartbeat
         self._heartbeat_timeout = self.get_hearbeat_timeout()
         self.next_index = {}
+        self._failed_elections = 0
         for val in nodos.values():
             if val['name'] != self._name:
                 self.next_index[val['name']] = len(self.logs)
@@ -171,7 +174,7 @@ class ServerNode:
                         if reply:
                             reply = pickle.loads(reply)
 
-                            print('Append reply: ', reply)
+                            print('Append reply: ', reply) #if DEBUGGING_ON else None
 
                             if reply['success']:
                                 print('Log:', self.logs) if DEBUGGING_ON else None
@@ -211,7 +214,7 @@ class ServerNode:
         self._voted_for = self._name
         self._votes_in_term = 1
         persist_state(self)
-
+        self._failed_elections+=1
         # for all nodes in cluster
         for node, value in nodos.items():
             time.sleep(0.1)
@@ -242,7 +245,10 @@ class ServerNode:
                     persist_state(self)
                     self._state = 'Follower'
                     self.config_timeout()
+                    print(f"{reply.get('term', None)} and {reply['term']} > {self._current_term}:")
+                    self._failed_elections=0
                     return
+        
 
     def conn_loop(self, conn, address):
         with conn:
@@ -261,15 +267,13 @@ class ServerNode:
             # Prints the received data
             print('Msg received: ', msg)  if DEBUGGING_ON else None 
             
-            signal.alarm(0)
             
             if msg['from'] in self._broken_links:
                 print(f"Message blocked - link {nodos[self._id]['port']} and {msg['from']} broken")
-                conn.close()
-
-            elif msg['type'] == 'ping' :
-                if msg['from'] not in self._broken_links:
-                    conn.sendall(pickle.dumps({'type':'ping_reply'}))                   
+                return
+                
+            if msg['type'] == 'ping' :
+                conn.sendall(pickle.dumps({'type':'ping_reply'}))                   
             
             # If it is a message sent from a client            
             elif msg['type'] == 'client':
@@ -277,6 +281,8 @@ class ServerNode:
 
             # If it is an append entry message from the leader
             elif msg['type'] == 'apn_en':
+                self._failed_elections=0
+                print(f"apn_en from {msg['leader_id']}")
                 reply_append_entry(self, msg, conn)                
 
             elif msg['type'] == 'req_vote':               
@@ -287,7 +293,6 @@ class ServerNode:
             #Below a node processes all known commands sent to it via interface
             elif msg['type'] == 'create_group':
                 publicKey_group,privateKey_group = rsa.newkeys(GROUP_KEY_NBITS) 
-                print(msg['client_ids'])
                 log_entry = {
                     'type':'client',
                     'change': { 
@@ -399,32 +404,39 @@ class ServerNode:
                         messages_with_gid+= "\n"+ json.dumps({'message': decrypted_message,'sender': log['sender'], 'clients':log['client_ids']})
                 #Even if the response seems empty, the group may still have messages from external senders, 
                 # or this client might be that external sender but does not have the private key for decryption
-                send_message(f"{len(messages_with_gid)} messages found"+messages_with_gid, 333, interface["port"]) if messages_with_gid else send_message("Empty response: Given client "+self._id+" cannot decypher messages for group "+msg["group_id"]+" OR no such group exists.", 333, interface["port"])
+                count = messages_with_gid.count('\n')
+                send_message(f"{count} messages found"+messages_with_gid, 333, interface["port"]) if messages_with_gid else send_message("Empty response: Given client "+self._id+" cannot decypher messages for group "+msg["group_id"]+" OR no such group exists.", 333, interface["port"])
             
             elif msg['type'] == 'fail_link':
-                self._broken_links.append(nodos[msg['dst']]['port'])
+                self._broken_links.extend([ nodos[x]['port'] for x in msg['dst'] ])
                 persist_state(self)
                 if msg['src'] != 'done':
-                    next_node = msg['dst']
-                    msg['src'] = 'done'
-                    msg['dst'] = self._id
-                    send_message(msg, 123, nodos[next_node] ['port']) 
+                    next_nodes = deepcopy(msg['dst'])
+                    for next_node in next_nodes:
+                        msg['src'] = 'done'
+                        msg['dst'] = self._id
+                        send_message(msg, 123, nodos[next_node]['port']) 
+
+                    send_message({'Command': 'failLink', 'Status': f"Successfully broken link {self._id}-{next_nodes}"} , 123, interface['port']) 
                 
             elif msg['type'] == 'fix_link':
-                self._broken_links = list(filter(lambda x: x != nodos[msg['dst']]['port'],self._broken_links))
+                for node in msg['dst']:
+                    self._broken_links = list(filter(lambda x: x != nodos[node]['port'],self._broken_links))
                 persist_state(self)
                 if msg['src'] != 'done':
-                    next_node = msg['dst']
-                    msg['src'] = 'done'
-                    msg['dst'] = self._id
-                    send_message(msg , 123, nodos[next_node]['port']) 
+                    next_nodes = deepcopy(msg['dst'])
+                    for next_node in next_nodes:
+                        msg['src'] = 'done'
+                        msg['dst'] = self._id
+                        send_message(msg, 123, nodos[next_node]['port']) 
+                        
+                    send_message({'Command': 'fixLink', 'Status': f"Link {self._id}-{next_nodes} is up again."} , 123, interface['port']) 
 
             elif msg['type'] == 'fail_process':
                 #TODO: Utilize for updating states before failing
                 send_message(f"Process {self._id} failed with code 0.", nodos[self._id]['port'], interface['port']) 
                 quit()            
             
-            self.config_timeout()            
 
     def receive_msg(self):
 
@@ -458,10 +470,10 @@ class ServerNode:
         """
         Set a new election timeout for follower node
 
-        :return: timeout between 3 and 5 seconds
+        :return: random exponential backoff
         """
-        election_timeout = round(random.uniform(5, 8))
-        print(f'Node {self._name} have new election timeout of {election_timeout}') if DEBUGGING_ON else None
+        election_timeout = round(random.uniform(2, 5))**(1+ self._failed_elections)+3
+        print(f'Node {self._name} have new election timeout of {election_timeout}') #if DEBUGGING_ON else None
         return election_timeout
 
     def get_hearbeat_timeout(self):
