@@ -292,19 +292,26 @@ class ServerNode:
 
             #Below a node processes all known commands sent to it via interface
             elif msg['type'] == 'create_group':
-                publicKey_group,privateKey_group = rsa.newkeys(GROUP_KEY_NBITS) 
-                log_entry = {
-                    'type':'client',
-                    'change': { 
-                        'term': self._current_term,
-                        'type': 'createGroup',
-                        'group_id': msg['group_id'],
-                        'client_ids': msg['client_ids'],
-                        'group_public_key': publicKey_group,
-                        'private_key_encrypted': [encrypt_group_key(x, privateKey_group) for x in msg['client_ids']]
+
+                 #find the group, return latest entry if it exists
+                log_for_g_id = log_with_gid(self, msg['group_id'])
+
+                if log_for_g_id:
+                    send_message(f"Error: Group {msg['group_id']} already exists!", 333, interface["port"])
+                else:
+                    publicKey_group,privateKey_group = rsa.newkeys(GROUP_KEY_NBITS) 
+                    log_entry = {
+                        'type':'client',
+                        'change': { 
+                            'term': self._current_term,
+                            'type': 'createGroup',
+                            'group_id': msg['group_id'],
+                            'client_ids': msg['client_ids'],
+                            'group_public_key': publicKey_group,
+                            'private_key_encrypted': [encrypt_group_key(x, privateKey_group) for x in msg['client_ids']]
+                        }
                     }
-                }
-                replicate_logEntry(self, log_entry)
+                    replicate_logEntry(self, log_entry)
             elif msg['type'] == 'add2group':
                 #find the group, return latest entry if it exists
                 log_for_g_id = log_with_gid(self, msg['group_id'])
@@ -373,7 +380,7 @@ class ServerNode:
                 #find the group, return latest entry if it exists
                 log_for_g_id = log_with_gid(self, msg['group_id'])
 
-                if log_for_g_id:
+                if log_for_g_id and len(msg['message'])<21:
                     encrypted_msg = rsa.encrypt(msg['message'].encode('utf8'), log_for_g_id['group_public_key'])
                     log_entry = {
                         'type':'client',
@@ -389,23 +396,30 @@ class ServerNode:
                         }
                     }
                     replicate_logEntry(self, log_entry)
-                else:
+                elif not log_for_g_id:
                     send_message({'Error writing to group': 'Group with id = '+msg['group_id']+' does not exist!', 'Commit Status':'Aborted'}, nodos[self._id]['port'], interface['port'])
-            
+                else:
+                    send_message({'Error writing to group': f"length of {msg['message']} = {len(msg['message'])}>21 (max permissible limit 4096 bits of RSA keys)", 'Commit Status':'Aborted'}, nodos[self._id]['port'], interface['port'])
+
             elif msg['type'] == 'print_group':
                                 
                 messages_with_gid = ""
-
-                for log in self.logs:
-                    if log['group_id'] == msg['group_id'] and log['type'] == 'message' and self._id in log['client_ids']:
-                        my_idx_in_group = log['client_ids'].index(self._id)
-                        privateKey_group = decrypt_group_key(log['private_key_encrypted'][my_idx_in_group], self._id)
-                        decrypted_message = decrypt_message(log['message'], privateKey_group)
-                        messages_with_gid+= "\n"+ json.dumps({'message': decrypted_message,'sender': log['sender'], 'clients':log['client_ids']})
-                #Even if the response seems empty, the group may still have messages from external senders, 
-                # or this client might be that external sender but does not have the private key for decryption
-                count = messages_with_gid.count('\n')
-                send_message(f"{count} messages found"+messages_with_gid, 333, interface["port"]) if messages_with_gid else send_message("Empty response: Given client "+self._id+" cannot decypher messages for group "+msg["group_id"]+" OR no such group exists.", 333, interface["port"])
+                #find the group, return latest entry if it exists
+                log_for_g_id = log_with_gid(self, msg['group_id'])
+                if log_for_g_id:
+                    current_clients = log_for_g_id['client_ids']
+                    for log in self.logs:
+                        if log['group_id'] == msg['group_id'] and log['type'] == 'message' and self._id in log['client_ids']:
+                            my_idx_in_group = log['client_ids'].index(self._id)
+                            privateKey_group = decrypt_group_key(log['private_key_encrypted'][my_idx_in_group], self._id)
+                            decrypted_message = decrypt_message(log['message'], privateKey_group)
+                            messages_with_gid+= "\n"+ json.dumps({'message': decrypted_message,'sender': log['sender'], 'clients':log['client_ids']})
+                    #Even if the response seems empty, the group may still have messages from external senders, 
+                    # or this client might be that external sender but does not have the private key for decryption
+                    count = messages_with_gid.count('\n')
+                    send_message(f"{count} messages found"+f", current_clients = [{current_clients}]"+messages_with_gid, 333, interface["port"]) if messages_with_gid else send_message("Empty response: Given client "+self._id+" cannot decypher messages for group "+msg["group_id"], 333, interface["port"])
+                else:
+                    send_message(f"Error: No such group {msg['group_id']} exists!", 333, interface["port"])
             
             elif msg['type'] == 'fail_link':
                 self._broken_links.extend([ nodos[x]['port'] for x in msg['dst'] ])

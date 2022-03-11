@@ -173,19 +173,17 @@ def request_vote(self, node, value):
             reply = pickle.loads(reply)
             return reply
     except TimeoutError as te:
-        print(te.args[0])
         error = te.args[0]
         tcp.close()
 
     except Exception as e:
         tcp.close()
         error = e
-        print(e,'request_vote')
 
     except KeyboardInterrupt:
         raise SystemExit()
     tcp.close()
-    return {'candidate_id':error}
+    return {'error':error}
 
 def send_message(msg, sender_port, port):
     if port!=interface['port']:
